@@ -445,11 +445,14 @@ export default function Election() {
 
   useEffect(() => { normalizeUrl(); }, []);
 
-  // BROWSER TITLE — scoped to this page only. index.html's own <title> stays
-  // "Forge-A-Truck-Thon — NAWEDOAM" for every OTHER route; this overrides it
-  // only while ElectionCanon is mounted, and restores the original on
-  // unmount so navigating to a manufacturing room never shows a stale
-  // ElectionCanon title.
+  // BROWSER TITLE — scoped to this page only. index.html's own <title> is
+  // already "ElectionCanon — Election Operations Platform" in this
+  // standalone repository, so this override is mostly redundant here (it
+  // mattered more in the source monorepo, where this same page shared an
+  // <title> with an unrelated manufacturing product). Left in place
+  // unchanged — restoring the previous title on unmount is still correct
+  // behavior for a page that can be mounted/unmounted within a client-side
+  // route tree, and removing it isn't required by the extraction.
   useEffect(() => {
     const previousTitle = document.title;
     document.title = `ElectionCanon — ${TITLE_BY_SECTION[section] ?? "Election Operating System"}`;
