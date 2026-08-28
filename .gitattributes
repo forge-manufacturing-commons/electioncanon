@@ -1,0 +1,11 @@
+# Force LF line endings for all text files, regardless of the cloning
+# machine's own core.autocrlf setting. Found during Alpha 1.7's
+# independent-clone verification: a Windows clone with the (very common,
+# Windows-recommended-default) core.autocrlf=true setting converts LF to
+# CRLF on checkout, which silently breaks a handful of source-text
+# structural tests (test/election-web-surface.consumer.mjs) whose regexes
+# match a literal `\n`. Without this file, the SAME clean commit produces
+# different bytes — and different test results — depending on who clones
+# it. This is the standard, correct fix (normalize line endings in the
+# repository itself), not a workaround in individual test regexes.
+* text=auto eol=lf
