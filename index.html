@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0C0A09" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+
+    <title>ElectionCanon — Election Operations Platform</title>
+    <meta name="description" content="ElectionCanon is an open-source operating system for election readiness, mobilization, coordination, evidence and election-day operations — for candidate campaigns and observer organisations." />
+
+    <meta property="og:title" content="ElectionCanon" />
+    <meta property="og:description" content="An open-source operating system for organizing election readiness, mobilization, coordination, evidence and election-day operations." />
+    <meta property="og:type" content="website" />
+
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="ElectionCanon" />
+    <meta name="twitter:description" content="An open-source operating system for organizing election readiness, mobilization, coordination, evidence and election-day operations." />
+
+    <!-- NO LOGO ASSET: no real ElectionCanon mark exists yet. Reusing
+         Forge-A-Truck's would be dishonest branding; inventing one
+         would violate this project's own "no claim without proof"
+         discipline. apple-touch-icon/og:image are intentionally
+         omitted — add a real mark here (and to
+         public/manifest.webmanifest's `icons`) once one exists. -->
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(()=>{}))
+      }
+    </script>
+  </body>
+</html>

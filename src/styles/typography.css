@@ -1,0 +1,126 @@
+/* ============================================================
+   FORGE TYPOGRAPHY — five voices as an operating system
+   Sourced from Odogwu brief §4. These classes are the ONLY
+   place typography roles are declared. Components consume them.
+   Semantic HTML is preserved separately (h1, h2, section…).
+   ============================================================ */
+
+/* Common shell for headline treatments */
+:root{
+  --forge-font: "Helvetica Neue", "Inter", system-ui, -apple-system, sans-serif;
+  --forge-mono: "SFMono-Regular", "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+
+/* -------- 01 COMMAND VOICE — monumental product statements -------- */
+/* Architectural, controlled stagger, allowed to break lines by design */
+.forge-command{
+  font-family:var(--forge-font);
+  font-weight:900;
+  font-size:clamp(46px,7.4vw,112px);
+  line-height:.86;
+  letter-spacing:-.045em;
+  text-transform:uppercase;
+  color:var(--cream);
+  margin:0;
+}
+.forge-command .line{display:block;overflow:hidden;position:relative}
+.forge-command .line > span{display:inline-block}
+.forge-command .stagger-1{padding-left:0}
+.forge-command .stagger-2{padding-left:2ch}
+.forge-command .stagger-3{padding-left:.6ch}
+.forge-command .rail{position:absolute;left:-14px;top:12%;bottom:12%;width:2px;background:linear-gradient(180deg,transparent,var(--forge-gold),transparent);opacity:.6}
+.forge-command .tick{display:inline-block;width:.5ch;color:var(--forge-gold);opacity:.55;font-weight:900}
+.forge-command .cyan{color:var(--forge-cyan)}
+.forge-command .gold{color:var(--forge-gold)}
+@media(max-width:720px){.forge-command .stagger-2{padding-left:1ch}.forge-command .stagger-3{padding-left:.3ch}}
+
+/* -------- 02 SYSTEM VOICE — Forge OS interface language -------- */
+/* Compact, tracked, disciplined. Clearly not human copy. */
+.forge-system{
+  font-family:var(--forge-mono);
+  font-size:11px;
+  font-weight:700;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  color:var(--forge-cyan);
+}
+.forge-system::before{content:"[";margin-right:.5ch;color:rgba(65,226,255,.55)}
+.forge-system::after{content:"]";margin-left:.5ch;color:rgba(65,226,255,.55)}
+.forge-system.no-brackets::before,
+.forge-system.no-brackets::after{content:none}
+.forge-system.gold{color:var(--forge-gold)}
+.forge-system.gold::before,.forge-system.gold::after{color:rgba(212,175,55,.55)}
+.forge-system.emerald{color:var(--forge-emerald)}
+.forge-system.emerald::before,.forge-system.emerald::after{color:rgba(0,210,106,.55)}
+
+/* -------- 03 HUMAN VOICE — plain-English Nigerian copy -------- */
+.forge-human{
+  font-family:var(--forge-font);
+  font-size:clamp(15px,1.35vw,17px);
+  line-height:1.62;
+  color:rgba(243,233,210,.82);
+  max-width:60ch;
+  font-weight:400;
+  letter-spacing:.005em;
+}
+.forge-human.lead{font-size:clamp(17px,1.6vw,20px);color:rgba(243,233,210,.9);max-width:52ch;line-height:1.55}
+.forge-human b, .forge-human strong{color:var(--cream);font-weight:700}
+.forge-human em{font-style:normal;color:var(--forge-gold);font-weight:600}
+
+/* -------- 04 TECHNICAL VOICE — component IDs, revisions -------- */
+.forge-technical{
+  font-family:var(--forge-mono);
+  font-size:11px;
+  font-weight:600;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:rgba(212,175,55,.85);
+}
+.forge-technical .slash{opacity:.5;margin:0 .3ch}
+.forge-technical .rev{color:rgba(243,233,210,.55)}
+
+/* -------- 05 SIGNAL VOICE — short manufacturing events -------- */
+.forge-signal{
+  display:inline-flex;align-items:center;gap:.6ch;
+  font-family:var(--forge-mono);
+  font-size:10.5px;font-weight:900;
+  letter-spacing:.18em;text-transform:uppercase;
+  padding:5px 10px 4px;
+  color:var(--forge-cyan);
+  background:rgba(65,226,255,.06);
+  border:1px solid rgba(65,226,255,.35);
+  border-left:2px solid var(--forge-cyan);
+}
+.forge-signal::before{content:"";width:5px;height:5px;background:currentColor;
+  box-shadow:0 0 4px currentColor;animation:signalPulse 1.4s ease-in-out infinite}
+.forge-signal.emerald{color:var(--forge-emerald);background:rgba(0,210,106,.06);border-color:rgba(0,210,106,.4);border-left-color:var(--forge-emerald)}
+.forge-signal.gold{color:var(--forge-gold);background:rgba(212,175,55,.06);border-color:rgba(212,175,55,.4);border-left-color:var(--forge-gold)}
+.forge-signal.heat{color:var(--forge-heat);background:rgba(247,147,26,.07);border-color:rgba(247,147,26,.4);border-left-color:var(--forge-heat)}
+@keyframes signalPulse{0%,60%,100%{opacity:.35}30%{opacity:1}}
+
+/* -------- Section identifier — 01 / CAPABILITY treatment -------- */
+.forge-section-id{
+  display:inline-flex;align-items:baseline;gap:14px;
+  font-family:var(--forge-mono);
+  color:rgba(212,175,55,.75);
+  margin-bottom:22px;
+}
+.forge-section-id .num{
+  font-size:44px;font-weight:900;letter-spacing:-.02em;
+  color:var(--forge-gold);line-height:1;
+  padding:8px 12px 6px;border:1px solid rgba(212,175,55,.45);border-left:3px solid var(--forge-gold);
+  position:relative;
+}
+.forge-section-id .num::after{content:"";position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;
+  background:var(--forge-gold);clip-path:polygon(100% 0, 100% 100%, 0 100%)}
+.forge-section-id .slash{color:rgba(212,175,55,.5)}
+.forge-section-id .name{
+  font-size:11px;font-weight:900;letter-spacing:.22em;text-transform:uppercase;
+  color:rgba(243,233,210,.85);
+}
+@media(max-width:720px){.forge-section-id .num{font-size:32px}}
+
+/* -------- Reduced motion respects signal pulse -------- */
+@media (prefers-reduced-motion: reduce){
+  .forge-signal::before{animation:none;opacity:.7}
+}

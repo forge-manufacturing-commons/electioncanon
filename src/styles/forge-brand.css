@@ -1,0 +1,63 @@
+/* ============================================================
+   BUILD-D001 — FORGE BRAND & EXPERIENCE SYSTEM v1.0 (Part 2)
+   Institutional design tokens: the canonical Forge palette and
+   typography. This is a STANDARD, not a one-off.
+
+   Apply BUILD-D001 to any surface by adding the `.forge-brand`
+   class: it inherits the palette, the Poppins type system, and maps
+   the existing Forge Geometry accent variables to the brand
+   palette so the geo-* primitives render in institutional colour
+   WITHOUT being rewritten.
+
+   Additive by design — existing components keep their current
+   tokens until an app-wide migration is authorised. No cyan, no
+   neon blue, no cyberpunk gradients are defined here.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@700;800;900&display=swap');
+
+:root {
+  /* --- Palette (BUILD-D001 Part 2) -------------------------------------- */
+  --forge-black:  #0D0D0F;  /* 60% dominant  — primary background: depth, strength */
+  --forge-ivory:  #F5F1E9;  /* 25% support   — primary foreground: clarity, knowledge */
+  --forge-teal:   #0A7F73;  /* 10% accent    — technology, growth, connection */
+  --forge-amber:  #F5A623;  /*  3% accent    — energy, progress, achievement */
+  --forge-pink:   #FF2E63;  /*  2% highlight — momentum, bold initiative */
+
+  /* --- Foreground steps (derived from ivory only — never new hues) ------ */
+  --forge-ivory-70: rgba(245, 241, 233, 0.70);
+  --forge-ivory-55: rgba(245, 241, 233, 0.55);
+  --forge-ivory-12: rgba(245, 241, 233, 0.12);
+
+  /* --- Typography (BUILD-D001) ------------------------------------------ */
+  /* Sora retired — Poppins is the single Forge face, Black (900) for headlines. */
+  --forge-brand-font: 'Poppins', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Display / headline face — Poppins Black, set lowercase at call sites. */
+  --forge-display-font: 'Poppins', var(--forge-brand-font);
+}
+
+/* A branded surface. Everything inside speaks BUILD-D001:
+   - Poppins type system + ivory foreground on Forge Black
+   - the legacy geometry accent variables are remapped to the brand palette
+     so var-driven primitives (geo-reg, geo-chevron, geo-notch, …) render in
+     institutional colour with no cyan and no gold. */
+.forge-brand {
+  font-family: var(--forge-brand-font);
+  color: var(--forge-ivory);
+  --forge-gold: var(--forge-amber);
+  --forge-cyan: var(--forge-teal);
+}
+.forge-brand h1,
+.forge-brand h2,
+.forge-brand h3 {
+  font-family: var(--forge-brand-font);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Institutional colour utilities (reusable — not one-offs). */
+.forge-fg-teal  { color: var(--forge-teal); }
+.forge-fg-amber { color: var(--forge-amber); }
+.forge-fg-pink  { color: var(--forge-pink); }
+.forge-fg-ivory { color: var(--forge-ivory); }
+.forge-fg-muted { color: var(--forge-ivory-55); }

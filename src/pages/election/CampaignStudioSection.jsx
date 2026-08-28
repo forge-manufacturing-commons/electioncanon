@@ -1,0 +1,210 @@
+// ============================================================
+// ELECTION FORGE — CAMPAIGN STUDIO  (Alpha 1.0)
+//
+// Template gallery -> editor -> save (real, persisted to
+// campaign_studio_assets) -> client-side PNG export (canvas, no backend
+// export step, no image-generation engine — text/colour only, and this
+// screen never claims otherwise). See src/domains/election/design/.
+// ============================================================
+
+import { useState, useEffect, useCallback } from "react";
+import { supabase } from "../../lib/supabase.js";
+import * as assetsApi from "../../domains/election/design/assets.js";
+import { TEMPLATE_LIST, TEMPLATES } from "../../domains/election/design/templates.js";
+import { Label, Panel, DemoTag, friendlyError, UI, IVORY, MUTED, TEAL, AMBER, PINK, SURFACE, BORDER, BLACK, inputStyle } from "./shared.jsx";
+
+const COLOUR_TOKEN = { primary: TEAL, secondary: PINK, accent: AMBER, surface: SURFACE };
+
+function TemplateCard({ template, onSelect }) {
+  return (
+    <button onClick={() => onSelect(template)}
+      style={{ textAlign: "left", fontFamily: UI, padding: "14px 16px", cursor: "pointer",
+        background: BLACK, border: `1px solid ${BORDER}`, color: IVORY }}>
+      <div style={{ fontWeight: 700, fontSize: 12.5 }}>{template.label}</div>
+      <div style={{ fontSize: 10.5, color: MUTED, marginTop: 4 }}>
+        {template.dimensions.width}×{template.dimensions.height ?? "auto"}
+      </div>
+    </button>
+  );
+}
+
+function AssetRow({ asset, onOpen }) {
+  return (
+    <button onClick={() => onOpen(asset)}
+      style={{ display: "flex", justifyContent: "space-between", width: "100%", textAlign: "left", fontFamily: UI,
+        padding: "9px 0", background: "transparent", border: "none", borderBottom: `1px solid ${BORDER}`,
+        cursor: "pointer", color: IVORY }}>
+      <span style={{ fontSize: 12.5 }}>{asset.title}</span>
+      <span style={{ fontSize: 10.5, color: MUTED, textTransform: "uppercase" }}>{asset.status}</span>
+    </button>
+  );
+}
+
+/** Renders the asset's current content onto an offscreen canvas and triggers
+ *  a PNG download — text/colour only, no image-generation engine. */
+function exportPng(asset, template) {
+  const { width, height } = template.dimensions;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height ?? 630;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = COLOUR_TOKEN[template.background.token] ?? TEAL;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = BLACK;
+  ctx.textBaseline = "top";
+  let y = canvas.height * 0.12;
+  const marginX = canvas.width * 0.08;
+  const maxWidth = canvas.width * 0.84;
+
+  const wrapText = (text, font, maxW) => {
+    ctx.font = font;
+    const words = String(text ?? "").split(/\s+/).filter(Boolean);
+    const lines = [];
+    let line = "";
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > maxW && line) { lines.push(line); line = word; }
+      else line = test;
+    }
+    if (line) lines.push(line);
+    return lines;
+  };
+
+  for (const slot of template.textSlots) {
+    const value = asset.content?.text?.[slot.id];
+    if (!value) continue;
+    const isHeadline = slot.id === "headline";
+    const font = isHeadline ? `700 ${Math.round(canvas.width * 0.055)}px sans-serif` : `400 ${Math.round(canvas.width * 0.03)}px sans-serif`;
+    const lines = wrapText(value, font, maxWidth);
+    ctx.font = font;
+    for (const line of lines) {
+      ctx.fillText(line, marginX, y);
+      y += Math.round(canvas.width * (isHeadline ? 0.065 : 0.04));
+    }
+    y += canvas.width * 0.02;
+  }
+
+  if (asset.content?.identity?.campaignName) {
+    ctx.font = `700 ${Math.round(canvas.width * 0.024)}px sans-serif`;
+    ctx.fillText(asset.content.identity.campaignName, marginX, canvas.height - canvas.width * 0.08);
+  }
+
+  canvas.toBlob((blob) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `${asset.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.png`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, "image/png");
+}
+
+function Editor({ asset, onChange, onSave, onExport, busy, error }) {
+  const template = TEMPLATES[asset.template_id];
+  const setText = (slotId) => (e) => onChange({ ...asset, content: { ...asset.content, text: { ...asset.content.text, [slotId]: e.target.value } } });
+
+  return (
+    <Panel accent={AMBER}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 12, color: IVORY }}>{template.label}</div>
+        <DemoTag label="Text/colour only — no AI image generation connected" />
+      </div>
+      <input value={asset.title} onChange={(e) => onChange({ ...asset, title: e.target.value })}
+        placeholder="Asset title" aria-label="Asset title" style={inputStyle} />
+      {template.textSlots.map((slot) => (
+        <div key={slot.id} style={{ marginBottom: 9 }}>
+          <div style={{ fontFamily: UI, fontSize: 10.5, color: MUTED, marginBottom: 4 }}>{slot.label}</div>
+          {slot.maxLength > 300 ? (
+            <textarea value={asset.content?.text?.[slot.id] ?? ""} onChange={setText(slot.id)} rows={4}
+              maxLength={slot.maxLength} aria-label={slot.label} style={{ ...inputStyle, resize: "vertical" }} />
+          ) : (
+            <input value={asset.content?.text?.[slot.id] ?? ""} onChange={setText(slot.id)}
+              maxLength={slot.maxLength} aria-label={slot.label} style={inputStyle} />
+          )}
+        </div>
+      ))}
+      <div style={{ display: "flex", gap: 10, marginTop: 8, flexWrap: "wrap" }}>
+        <button onClick={onSave} disabled={busy}
+          style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase",
+            padding: "11px 18px", border: "none", background: busy ? BORDER : TEAL, color: BLACK,
+            cursor: busy ? "not-allowed" : "pointer" }}>{busy ? "Saving…" : "Save draft"}</button>
+        <button onClick={onExport}
+          style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase",
+            padding: "11px 18px", background: "transparent", border: `1px solid ${BORDER}`, color: IVORY, cursor: "pointer" }}>
+          Export PNG
+        </button>
+      </div>
+      {error && <div style={{ fontFamily: UI, fontSize: 12, color: PINK, marginTop: 10 }}>{friendlyError(error)}</div>}
+    </Panel>
+  );
+}
+
+export default function CampaignStudioSection({ campaignId, userId, workspaceName }) {
+  const [assets, setAssets] = useState([]);
+  const [editing, setEditing] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  const load = useCallback(async () => {
+    const { assets: list, error: listError } = await assetsApi.listAssets({ client: supabase, campaignId });
+    if (listError) { setError(listError); return; }
+    setAssets(list);
+  }, [campaignId]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const onSelectTemplate = async (template) => {
+    setBusy(true); setError(null);
+    const { asset, error: createError } = await assetsApi.createAsset({
+      client: supabase, userId, campaignId, templateId: template.id, title: template.label,
+      workspaceIdentity: { campaignName: workspaceName },
+    });
+    setBusy(false);
+    if (createError) { setError(createError); return; }
+    setEditing(asset);
+    await load();
+  };
+
+  const onSave = async () => {
+    setBusy(true); setError(null);
+    const { asset, error: saveError } = await assetsApi.updateAsset({
+      client: supabase, assetId: editing.id, title: editing.title, content: editing.content,
+    });
+    setBusy(false);
+    if (saveError) { setError(saveError); return; }
+    setEditing(asset);
+    await load();
+  };
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(340px,1fr))", gap: 18 }}>
+      <div>
+        <Label>Templates</Label>
+        <Panel>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(150px,1fr))", gap: 10 }}>
+            {TEMPLATE_LIST.map((t) => <TemplateCard key={t.id} template={t} onSelect={onSelectTemplate} />)}
+          </div>
+        </Panel>
+        <div style={{ marginTop: 18 }}>
+          <Label>Your assets</Label>
+          <Panel>
+            {assets.length === 0
+              ? <div style={{ fontFamily: UI, fontSize: 12.5, color: MUTED }}>No assets yet — choose a template to start one.</div>
+              : assets.map((a) => <AssetRow key={a.id} asset={a} onOpen={setEditing} />)}
+          </Panel>
+        </div>
+      </div>
+      <div>
+        <Label>Editor</Label>
+        {editing ? (
+          <Editor asset={editing} onChange={setEditing} onSave={onSave}
+            onExport={() => exportPng(editing, TEMPLATES[editing.template_id])} busy={busy} error={error} />
+        ) : (
+          <Panel>
+            <div style={{ fontFamily: UI, fontSize: 12.5, color: MUTED }}>Choose a template or open a saved asset to start editing.</div>
+          </Panel>
+        )}
+      </div>
+    </div>
+  );
+}
