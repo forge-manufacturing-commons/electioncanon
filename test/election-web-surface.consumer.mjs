@@ -37,11 +37,17 @@ const APP = "../src/App.jsx";
 // generated once and reused, no narrower-than-reality placeholder copy)
 // still holds, just in its new home.
 const SHARED = "../src/pages/election/shared.jsx";
+// PUBLIC INTRODUCTION PASS 1 — the unauthenticated pitch moved out of
+// Election.jsx entirely, to a dedicated public landing page reached
+// directly at "/". Election.jsx's own `!session` branch now just redirects
+// there (see A2 below).
+const LANDING = "../src/pages/Landing.jsx";
 
 console.log("\nFORGE ELECTION — Web surface (structural)\n");
 
 const page = src(PAGE);
 const shared = src(SHARED);
+const landing = src(LANDING);
 
 // ============================================================
 console.log("F/J/K/L/M/N — CHANNEL INDEPENDENCE: the page reaches the Canon ONLY through electionWebAdapter.js");
@@ -86,16 +92,16 @@ console.log("\nA/B — AUTHENTICATION GATING");
 {
   ok("A1. the page checks `!session` and renders an honest unauthenticated state before any Canon read",
      /if \(!session\)/.test(page));
-  // ALPHA 1.7 EXTRACTION — the original fatt-app monorepo's Access.jsx
-  // was shared with Forge-A-Truck/Business, so ElectionCanon's sign-in
-  // link carried `?product=election` to select ElectionCanon-appropriate
-  // copy on that ONE shared page. This standalone repository's Access.jsx
-  // (see src/pages/Access.jsx's own header) is Election-only — there is
-  // no second product to disambiguate from — so the link is plain
-  // `/access`. The invariant this test protects (an honest sign-in
-  // link, never a bypass or a fabricated identity) is unchanged.
-  ok("A2. the unauthenticated branch offers sign-in, never a bypass or a fake identity",
-     /Not signed in/.test(page) && /nav\(["']\/access["']\)/.test(page));
+  // PUBLIC INTRODUCTION PASS 1 — Election.jsx's `!session` branch no
+  // longer renders its own "Not signed in" pitch; it redirects to the
+  // dedicated public landing page ("/", Landing.jsx), which is the one
+  // place that now offers the real sign-in path. The invariant this test
+  // protects (an honest sign-in link, never a bypass or a fabricated
+  // identity) still holds, just split across the two files that together
+  // make up the unauthenticated experience.
+  ok("A2. Election.jsx's unauthenticated branch redirects (never a bypass or a fake identity), and the landing page it redirects to offers real sign-in",
+     /if \(!session\) \{\s*[\s\S]{0,400}?<Navigate to="\/" replace \/>/.test(page)
+     && /nav\(["']\/access["']\)/.test(landing));
   ok("B1. the Canon refresh only runs once a session's user exists — gated in refresh() itself",
      /if \(!session\?\.\?user\) return;|if \(!session\?\.user\) return;/.test(page));
   ok("B2. refresh() is invoked from a useEffect keyed on the refresh callback, so it runs once identity resolves",

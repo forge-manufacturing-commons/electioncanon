@@ -19,6 +19,38 @@ export const { black: BLACK, ivory: IVORY, teal: TEAL, amber: AMBER, pink: PINK,
 export const UI = "var(--forge-brand-font, 'Poppins', system-ui, sans-serif)";
 export const DISPLAY = "var(--forge-display-font, 'Poppins', system-ui, sans-serif)";
 
+// THE SINGLE SOURCE OF TRUTH for "what's real today" copy — read by the
+// authenticated first-run Welcome screen (Election.jsx's WelcomeOnboarding)
+// AND the public landing page (Landing.jsx), so the two can never drift
+// into contradicting each other. PUBLIC INTRODUCTION PASS 1 — refreshed to
+// include electoral geography, campaign organisation/invitations/role
+// assignment, and geography-scoped coordination chat, all shipped and
+// live-verified in production since this list was last updated.
+export const CAPABILITIES_AVAILABLE_NOW = Object.freeze([
+  "Election readiness (COMPLETE / INCOMPLETE / AT RISK / UNKNOWN — never a fabricated percentage)",
+  "Campaign / workspace setup",
+  "Electoral geography — Election, Office, State and Constituency selection, with LGA mapping where authoritative data exists",
+  "Campaign organisation — invite an LGA Coordinator, Ward Coordinator or Polling-Unit Agent by email, each landing directly in their own scoped workspace",
+  "Geographic responsibility — every coordinator's territory is a real, assigned record, not a claim",
+  "Mobilization — people, roles, wards, polling units, assignments, tasks",
+  "Coverage by state / LGA / ward, computed from real agent assignments",
+  "Coordination chat, including geography-scoped rooms for a coordinator's own LGA/Ward/Polling Unit, plus contextual references to a polling unit, incident, result, or task",
+  "Campaign Studio — 21 templates, save/edit, client-side PNG export",
+  "Ask ElectionCanon — 15+ operational questions answered from your own campaign's real data",
+  "Election-day simulation — polling units, agents, result capture, incident reporting",
+  "Result-sheet photo evidence capture (private, tenant-isolated storage)",
+  "OCR-assisted result extraction (English, client-side) with mandatory human review",
+  "Human confirm / correct / dispute workflow, with the original OCR reading always preserved",
+  "Low-bandwidth image compression before upload",
+]);
+export const CAPABILITIES_COMING_NEXT = Object.freeze([
+  "Voice operation (architecture ready; a Google Cloud Speech-to-Text profile is registered but not configured with a live key in any deployment yet)",
+  "Multilingual conversational realisation (Hausa/Yoruba/Igbo/Pidgin/Urhobo — detection exists; every language pack is unreviewed and unapproved for production)",
+  "Chat-app channel (e.g. WhatsApp) — documented contract, no live transport",
+  "Official election-result integration — Election Day remains explicitly simulated data",
+  "Ward/polling-unit geography for constituencies beyond the current verified slice",
+]);
+
 export const SECTIONS = Object.freeze([
   { id: "home", label: "Home" },
   { id: "territory", label: "Territory" },

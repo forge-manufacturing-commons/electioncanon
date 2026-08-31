@@ -16,8 +16,9 @@
 // `ForgeIdentityProvider` wrapping every route needs for authentication.
 // ============================================================
 
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route } from "react-router-dom";
 import { ForgeIdentityProvider } from "./os/ForgeIdentity.jsx";
+import Landing from "./pages/Landing.jsx";
 import Election from "./pages/Election.jsx";
 import Access from "./pages/Access.jsx";
 import AcceptInvite from "./pages/AcceptInvite.jsx";
@@ -26,7 +27,7 @@ export default function App() {
   return (
     <ForgeIdentityProvider>
       <Routes>
-        <Route path="/" element={<Navigate to="/election" replace />} />
+        <Route path="/" element={<Landing />} />
         <Route path="/election" element={<Election />} />
         <Route path="/access" element={<Access />} />
         <Route path="/invite/:token" element={<AcceptInvite />} />

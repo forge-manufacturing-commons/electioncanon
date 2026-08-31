@@ -32,7 +32,7 @@
 // ============================================================
 
 import { useState, useCallback, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Navigate } from "react-router-dom";
 import { supabase, isConfigured } from "../lib/supabase.js";
 import { useIdentity } from "../os/ForgeIdentity.jsx";
 import { FORGE_CLIPS } from "../os/geometry.js";
@@ -46,6 +46,7 @@ import { READINESS_DIMENSION_STATUS as STATUS } from "../domains/election/studio
 import {
   ForgeHeader, WriteActionPanel, Label, Panel, ClaimRow, GapRow, NotStartedRow,
   friendlyError, UI, DISPLAY, BLACK, IVORY, TEAL, AMBER, PINK, MUTED, BORDER,
+  CAPABILITIES_AVAILABLE_NOW, CAPABILITIES_COMING_NEXT,
 } from "./election/shared.jsx";
 import HomeSection from "./election/HomeSection.jsx";
 import TerritorySection from "./election/TerritorySection.jsx";
@@ -85,32 +86,6 @@ const ELECTION_TYPES = Object.freeze([
   "Presidential", "Senatorial", "House of Representatives", "Governorship", "State House of Assembly",
 ]);
 
-// ALPHA 1.4 — the SINGLE source of truth for "what's real today" copy,
-// used by BOTH the post-signup Welcome screen and the signed-out public
-// landing page, so the two can never drift into contradicting each other
-// again (the landing page previously still said "no OCR is connected
-// yet" while this exact list, one screen later, already said otherwise).
-const CAPABILITIES_AVAILABLE_NOW = Object.freeze([
-  "Election readiness (COMPLETE / INCOMPLETE / AT RISK / UNKNOWN — never a fabricated percentage)",
-  "Campaign / workspace setup",
-  "Mobilization — people, roles, wards, polling units, assignments, tasks",
-  "Coverage by state / LGA / ward, computed from real agent assignments",
-  "Coordination chat, including contextual references to a polling unit, incident, result, or task",
-  "Campaign Studio — 21 templates, save/edit, client-side PNG export",
-  "Ask ElectionCanon — 15+ operational questions answered from your own campaign's real data",
-  "Election-day simulation — polling units, agents, result capture, incident reporting",
-  "Result-sheet photo evidence capture (private, tenant-isolated storage)",
-  "OCR-assisted result extraction (English, client-side) with mandatory human review",
-  "Human confirm / correct / dispute workflow, with the original OCR reading always preserved",
-  "Low-bandwidth image compression before upload",
-]);
-const CAPABILITIES_COMING_NEXT = Object.freeze([
-  "Voice operation (architecture ready; a Google Cloud Speech-to-Text profile is registered but not configured with a live key in any deployment yet)",
-  "Multilingual conversational realisation (Hausa/Yoruba/Igbo/Pidgin/Urhobo — detection exists; every language pack is unreviewed and unapproved for production)",
-  "Chat-app channel (e.g. WhatsApp) — documented contract, no live transport",
-  "Official election-result integration — Election Day remains explicitly simulated data",
-  "Invite-only chat rooms (currently open to any active campaign member)",
-]);
 
 function ChoiceButton({ active, onClick, children }) {
   return (
@@ -543,100 +518,12 @@ export default function Election() {
   if (identityLoading) return shell(<div style={{ color: MUTED, fontSize: 13 }}>Resolving identity…</div>);
 
   if (!session) {
-    // ALPHA 1.1 — a real public landing page for the unauthenticated state,
-    // replacing the bare "Not signed in" block. Answers the questions a
-    // first-time visitor actually has, in plain language, with no party or
-    // candidate alignment anywhere in the copy — ElectionCanon is
-    // infrastructure any accountable campaign or observer organisation can
-    // run, not an endorsement of any of them.
-    const registerCta = (
-      <button onClick={() => nav("/access")} style={{ fontFamily: UI, fontWeight: 700,
-        fontSize: 12, letterSpacing: "0.12em", textTransform: "uppercase", padding: "13px 24px",
-        border: "none", background: AMBER, color: BLACK, cursor: "pointer", clipPath: FORGE_CLIPS.button }}>
-        Register or sign in →
-      </button>
-    );
-    const landingPanel = (title, body, accent = TEAL) => (
-      <Panel accent={accent}>
-        <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 10.5, letterSpacing: "0.12em",
-          textTransform: "uppercase", color: accent, marginBottom: 10 }}>{title}</div>
-        <div style={{ fontFamily: UI, fontSize: 13.5, color: "rgba(245,241,233,.82)", lineHeight: 1.7 }}>{body}</div>
-      </Panel>
-    );
-    return shell(
-      <>
-        <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.22em",
-          textTransform: "uppercase", color: TEAL, borderLeft: `2px solid ${PINK}`,
-          paddingLeft: 12, marginBottom: 18 }}>ElectionCanon</div>
-        <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 10.5, letterSpacing: "0.14em",
-          textTransform: "uppercase", color: MUTED, marginBottom: 10 }}>Not signed in</div>
-        <h1 style={{ fontFamily: DISPLAY, fontWeight: 900, fontSize: "clamp(26px,3.6vw,40px)",
-          letterSpacing: "-0.03em", margin: "0 0 12px" }}>An accountable operating system for running an election campaign</h1>
-        <p style={{ color: "rgba(245,241,233,.72)", fontSize: 15, maxWidth: 640, lineHeight: 1.6, marginBottom: 22 }}>
-          ElectionCanon attributes every campaign action — every readiness claim, every
-          assignment, every captured result — to an accountable actor and an immutable
-          event log. It does not run for any party, and it does not run against any
-          party: it is neutral infrastructure any campaign or observer organisation can
-          operate on its own terms.
-        </p>
-        <div style={{ marginBottom: 36 }}>{registerCta}</div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 18, marginBottom: 20 }}>
-          {landingPanel("What is ElectionCanon", "An open-source coordination platform for running a campaign: readiness "
-            + "tracking, mobilization of people across wards and polling units, coordination chat, campaign "
-            + "communications, and an election-day evidence record — all built on one event log that every "
-            + "screen reads from, so nothing is ever out of sync.", TEAL)}
-          {landingPanel("Who it is for", "Candidate campaigns at any level (national, state, or constituency), observer "
-            + "and election-monitoring organisations, and the coordinators, polling-unit agents, and volunteers "
-            + "they work with — each represented as an accountable actor, not an anonymous login.", AMBER)}
-          {landingPanel("The problem it solves", "Campaign coordination usually lives in scattered phone calls, chat "
-            + "screenshots, and spreadsheets nobody fully trusts. ElectionCanon replaces that with one shared, "
-            + "attributable record of what has actually happened — so \"is Ward 3 covered?\" has a real answer, "
-            + "not a guess.", PINK)}
-          {landingPanel("Before election day", "Prepare candidate and legal documentation, assign coordinators down to "
-            + "ward level, recruit and assign polling-unit agents and observers, plan mobilization tasks, and "
-            + "produce campaign communications — each step tracked as COMPLETE, INCOMPLETE, AT RISK, or UNKNOWN, "
-            + "never a fabricated percentage.", TEAL)}
-          {landingPanel("On election day", "Polling-unit agents and coordinators capture results and report incidents "
-            + "in real time, each one attributed to who reported it and when. Coordination rooms exist per level "
-            + "— national, state, LGA, ward, polling unit, and dedicated incident-response rooms — so escalation "
-            + "has a clear channel.", AMBER)}
-          {landingPanel("How evidence is protected", "A result-sheet photo is uploaded to private, tenant-isolated "
-            + "storage and never overwritten — a correction is always a new, separately recorded event, so the "
-            + "original is preserved. On-device OCR (client-side, no photo ever leaves your browser for this step) "
-            + "reads the sheet as a starting point, but a human always confirms or corrects every figure before it "
-            + "counts — OCR completing is never treated as verification. The result is labelled \"ElectionCanon "
-            + "Verified Evidence,\" never presented as an official result.", PINK)}
-          {landingPanel("Security & tenant isolation", "Every campaign's data — chat, evidence, results, incidents, "
-            + "roster — is walled off from every other campaign at the database level (row-level security), not "
-            + "just by what the interface happens to show you. No campaign can read or write another campaign's "
-            + "records, even if it guesses an id. This has been independently tested with separate accounts "
-            + "attempting exactly that.", TEAL)}
-          {landingPanel("What \"simulated\" means", "Every Election Day result and incident recorded through this "
-            + "product today is explicitly test/demonstration data, marked as such in the record itself, never an "
-            + "official election outcome. ElectionCanon does not integrate with INEC or IReV and makes no claim to "
-            + "authenticate or transmit an official result — it is infrastructure for a campaign or observer "
-            + "organisation's own coordination and evidence record.", AMBER)}
-          {landingPanel("What ElectionCanon does not do", "It does not run for or against any party or candidate, "
-            + "does not declare or predict a winner, does not claim to prevent or detect election rigging, does "
-            + "not surveil or geolocate agents without their own coordination context, and does not send your data "
-            + "anywhere outside your own campaign's isolated record.", PINK)}
-          {landingPanel("Available now", <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>
-            {CAPABILITIES_AVAILABLE_NOW.map((c) => <li key={c}>{c}</li>)}
-          </ul>, TEAL)}
-          {landingPanel("Coming next", <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.9 }}>
-            {CAPABILITIES_COMING_NEXT.map((c) => <li key={c}>{c}</li>)}
-          </ul>, AMBER)}
-          {landingPanel("Why it is open source", "A tool that campaigns and observers are asked to trust with their "
-            + "coordination record should be inspectable by anyone, not a black box. ElectionCanon's source, "
-            + "architecture, and security documentation are public under AGPL-3.0, scoped to ElectionCanon's own "
-            + "code and documentation only — see docs/electioncanon/ in the repository for the full documentation "
-            + "set (architecture, security policy, contribution guide, license).", PINK)}
-        </div>
-
-        <div>{registerCta}</div>
-      </>
-    );
+    // PUBLIC INTRODUCTION PASS 1 — the unauthenticated pitch now lives at
+    // the dedicated public landing page (src/pages/Landing.jsx), reached
+    // directly at "/" with no identity-resolution delay. This is a single
+    // source of truth for the pitch, not a second copy drifting apart from
+    // it inside the authenticated app shell.
+    return <Navigate to="/" replace />;
   }
 
   if (ctxLoading && !ctx) return shell(<div style={{ color: MUTED, fontSize: 13 }}>Loading Election Canon…</div>);

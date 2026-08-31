@@ -1,7 +1,7 @@
 {
   "name": "ElectionCanon",
   "short_name": "ElectionCanon",
-  "description": "An open-source operating system for election readiness, mobilization, coordination, evidence and election-day operations.",
+  "description": "The open-source operating system for running an election campaign — territory, organisation, responsibility, readiness, coordination, and election-day operations.",
   "start_url": "/election",
   "display": "standalone",
   "background_color": "#0C0A09",
