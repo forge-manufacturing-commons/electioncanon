@@ -216,6 +216,51 @@ const GEOGRAPHY_TREE = {
   });
   const differentResult = await executeAssignResponsibility({ draft: different.draft.draft, campaign: CAMPAIGN_A, userId: USER, client, confirmationId: "resp-concurrent-3" });
   ok("G5. assigning a DIFFERENT LGA in the same campaign is unaffected by the slot constraint", differentResult.success);
+
+  // TEST C — the slot-uniqueness index is scoped to (campaign_id, level,
+  // geographyRef) TOGETHER, never geographyRef alone. Two campaigns
+  // legitimately operating in the same real LGA (e.g. a candidate campaign
+  // and an observer organisation both referencing Okpe) must each be able
+  // to record their OWN LGA Coordinator for it — this is not a conflict,
+  // it is two independent tenants' own accountability records for a piece
+  // of shared, public geography.
+  const crossCampaign = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "lga", geographyRef: LGA_UVWIE }, roster: ROSTER, geographyTree: GEOGRAPHY_TREE,
+  });
+  const crossCampaignResult = await executeAssignResponsibility({ draft: crossCampaign.draft.draft, campaign: CAMPAIGN_B, userId: USER, client, confirmationId: "resp-concurrent-crosscampaign" });
+  ok("G6 (TEST C). a DIFFERENT campaign assigning the SAME geography (Uvwie, already taken in campaign A) succeeds — the slot constraint is per-tenant, not global",
+     crossCampaignResult.success);
+  const viewB = projectElection(logFor(client, CAMPAIGN_B), CAMPAIGN_B);
+  ok("G6b. campaign B's own fold shows its own Uvwie assignment, independent of campaign A's",
+     viewB.responsibilities["resp-concurrent-crosscampaign"]?.geographyRef === LGA_UVWIE);
+}
+
+// ---------- TEST D — idempotent replay of responsibility.assigned specifically ----------
+// (proposeSetTerritory's own replay is already covered in election-geography.
+// consumer.mjs's T4; this proves the SAME guarantee holds for the newer
+// RESPONSIBILITY.ASSIGNED type, which now shares election_events with a
+// SECOND unique constraint — the exact scenario insertEvent()'s
+// constraint-name check exists to get right.)
+{
+  const client = fakeEventClient();
+  const prepared = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "lga", geographyRef: LGA_OKPE }, roster: ROSTER, geographyTree: GEOGRAPHY_TREE,
+  });
+  const first = await executeAssignResponsibility({ draft: prepared.draft.draft, campaign: CAMPAIGN_A, userId: USER, client, confirmationId: "resp-replay-1" });
+  ok("H1 (TEST D). the first approval succeeds", first.success && first.alreadyRecorded === false);
+
+  // The EXACT same confirmationId/event_id, replayed — e.g. a UI retry
+  // after a dropped response. Must be recognised as the SAME event
+  // (event_id constraint), never refused as a slot conflict.
+  const replay = await executeAssignResponsibility({ draft: prepared.draft.draft, campaign: CAMPAIGN_A, userId: USER, client, confirmationId: "resp-replay-1" });
+  ok("H2. replaying the SAME confirmationId is idempotent — success, alreadyRecorded, no error",
+     replay.success && replay.alreadyRecorded === true && replay.error === null);
+
+  const view = projectElection(logFor(client, CAMPAIGN_A), CAMPAIGN_A);
+  const rows = logFor(client, CAMPAIGN_A).filter((e) => e.type === ELECTION_EVENT_TYPES.RESPONSIBILITY.ASSIGNED);
+  ok("H3. exactly ONE responsibility.assigned event was actually persisted, never two", rows.length === 1);
+  ok("H4. the fold shows exactly one responsibility for Okpe, no corruption, no duplicate history",
+     Object.keys(view.responsibilities).length === 1 && view.responsibilities["resp-replay-1"]?.geographyRef === LGA_OKPE);
 }
 
 // ---------- tenant isolation ----------
