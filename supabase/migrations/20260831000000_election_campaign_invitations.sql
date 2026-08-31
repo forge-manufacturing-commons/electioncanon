@@ -263,11 +263,21 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
+#variable_conflict use_column
 declare
   v_uid uuid := auth.uid();
   v_email text;
   v_inv public.campaign_invitations;
 begin
+  -- RETURNS TABLE(campaign_id uuid, ...) implicitly declares `campaign_id`
+  -- as a PL/pgSQL variable in this function's scope -- without the pragma
+  -- above, the bare `campaign_id` inside `on conflict (campaign_id,
+  -- person)` below is genuinely ambiguous between that variable and
+  -- campaign_members.campaign_id (Postgres: "column reference is
+  -- ambiguous... could refer to either a PL/pgSQL variable or a table
+  -- column"). get_invitation_preview() has the same RETURNS TABLE shape
+  -- but never references a bare (unqualified) campaign_id, so it is not
+  -- affected and needs no such pragma.
   if v_uid is null then
     raise exception 'accept_campaign_invitation requires an authenticated session';
   end if;
