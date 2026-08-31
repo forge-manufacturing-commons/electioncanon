@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "../../lib/supabase.js";
 import * as chatApi from "../../domains/election/chat/api.js";
+import { proposeCreateTask, executeCreateTask } from "../../domains/election/mobilization/write.js";
 import { Label, Panel, friendlyError, UI, IVORY, MUTED, TEAL, AMBER, PINK, BORDER, BLACK, inputStyle } from "./shared.jsx";
 
 // ALPHA 1.1 — named presets for the coordination-tier hierarchy §7 asks
@@ -94,11 +95,12 @@ function RoomList({ rooms, activeRoomId, onSelect, unreadCounts, onCreate }) {
 
 const CONTEXT_KINDS = Object.freeze(["polling_unit", "incident", "result", "task"]);
 
-function Thread({ room, messages, userId, onSend, error }) {
+function Thread({ room, messages, userId, onSend, onReportTask, error }) {
   const [draft, setDraft] = useState("");
   const [linking, setLinking] = useState(false);
   const [contextKind, setContextKind] = useState(CONTEXT_KINDS[0]);
   const [contextRef, setContextRef] = useState("");
+  const [reporting, setReporting] = useState(null);
   const send = () => {
     if (!draft.trim()) return;
     const context = linking && contextRef.trim() ? { kind: contextKind, ref: contextRef.trim() } : null;
@@ -125,6 +127,15 @@ function Thread({ room, messages, userId, onSend, error }) {
               </div>
             )}
             <div style={{ fontFamily: UI, fontSize: 13, color: IVORY }}>{m.body}</div>
+            {onReportTask && m.context_kind !== "task" && (
+              <button type="button" disabled={reporting === m.id}
+                onClick={async () => { setReporting(m.id); await onReportTask(m); setReporting(null); }}
+                style={{ fontFamily: UI, fontWeight: 700, fontSize: 9.5, letterSpacing: "0.06em", textTransform: "uppercase",
+                  color: reporting === m.id ? MUTED : AMBER, background: "transparent", border: "none",
+                  cursor: reporting === m.id ? "default" : "pointer", padding: "3px 0 0", textAlign: "left" }}>
+                {reporting === m.id ? "Creating task…" : "Report as task"}
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -217,6 +228,30 @@ export default function ChatSection({ campaignId, userId }) {
 
   const activeRoom = rooms.find((r) => r.id === activeRoomId) ?? null;
 
+  // CAMPAIGN ONBOARDING PASS — Phase 11's "chat -> structured report"
+  // foundation: no new event type, just the EXISTING
+  // proposeCreateTask/executeCreateTask (already built, already tested)
+  // fed a title prefilled from the message, then a confirmation message
+  // sent back into the same room using sendMessage()'s EXISTING
+  // context: {kind, ref} linking mechanism -- the same mechanism that
+  // already links a message to a polling unit/incident/result.
+  const onReportTask = async (message) => {
+    setError(null);
+    const title = message.body.length > 120 ? `${message.body.slice(0, 117)}...` : message.body;
+    const prepared = await proposeCreateTask({ fields: { title, description: message.body } });
+    if (prepared.status !== "PREPARED") { setError(prepared.reason); return; }
+    const confirmationId = crypto.randomUUID();
+    const result = await executeCreateTask({
+      draft: prepared.draft.draft, campaign: campaignId, userId, client: supabase, confirmationId,
+    });
+    if (!result.success) { setError(result.error); return; }
+    await chatApi.sendMessage({
+      client: supabase, userId, campaignId, roomId: activeRoomId,
+      body: `Reported as task: ${title}`, context: { kind: "task", ref: confirmationId },
+    });
+    await loadMessages(activeRoomId);
+  };
+
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(280px,1fr))", gap: 18 }}>
       <div>
@@ -225,7 +260,7 @@ export default function ChatSection({ campaignId, userId }) {
       </div>
       <div>
         <Label>Conversation</Label>
-        <Thread room={activeRoom} messages={messages} userId={userId} onSend={onSend} error={error} />
+        <Thread room={activeRoom} messages={messages} userId={userId} onSend={onSend} onReportTask={onReportTask} error={error} />
       </div>
     </div>
   );

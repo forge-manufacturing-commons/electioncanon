@@ -49,7 +49,12 @@ function draftShape({ draft, label, component, summary }) {
 // member) without touching campaigns.actor_kind or any Canon table — this
 // is a plain string stored in the mobilization.person.added event payload,
 // not a database enum, so extending it is additive and zero-migration.
+// ALPHA — `campaign_director`/`constituency_lead` added for the campaign
+// invitation/onboarding flow (accept_campaign_invitation folds an invited
+// Director/Constituency Lead's Mobilization roster entry through this SAME
+// zero-migration array) — same additive discipline as every prior addition.
 export const PERSON_ROLE_TYPES = Object.freeze([
+  "campaign_director", "constituency_lead",
   "national_coordinator", "state_coordinator", "lga_coordinator", "ward_coordinator",
   "coordinator", "polling_unit_agent", "observer", "volunteer", "logistics",
 ]);

@@ -49,6 +49,7 @@ import {
 } from "./election/shared.jsx";
 import HomeSection from "./election/HomeSection.jsx";
 import TerritorySection from "./election/TerritorySection.jsx";
+import OrganisationSection from "./election/OrganisationSection.jsx";
 import MobilizeSection from "./election/MobilizeSection.jsx";
 import ChatSection from "./election/ChatSection.jsx";
 import CampaignStudioSection from "./election/CampaignStudioSection.jsx";
@@ -483,6 +484,28 @@ export default function Election() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
+  // If this session arrived here after signing in FROM an invite-accept
+  // page (see AcceptInvite.jsx's goToAuth()), send them straight back to
+  // finish accepting rather than stranding them on a generic dashboard.
+  useEffect(() => {
+    if (!session?.user) return;
+    let pendingToken = null;
+    try {
+      pendingToken = sessionStorage.getItem("electioncanon_pending_invite_token");
+      // Cleared HERE, not only on successful acceptance — a user who
+      // abandons the invite (backs out of AcceptInvite.jsx without
+      // accepting) must not be trapped in a redirect loop back to it on
+      // every future visit to /election. One redirect attempt is enough;
+      // if they still want to accept, the link works again on its own.
+      if (pendingToken) sessionStorage.removeItem("electioncanon_pending_invite_token");
+    } catch { /* best effort */ }
+    if (pendingToken) nav(`/invite/${pendingToken}`, { replace: true });
+  }, [session?.user, nav]);
+
+  // FIRST-LOGIN WELCOME — a one-time banner after accepting an invitation
+  // (AcceptInvite.jsx navigates here with ?welcome=1), never a new DB flag.
+  const [showWelcome, setShowWelcome] = useState(() => new URLSearchParams(window.location.search).get("welcome") === "1");
+
   const doActivate = useCallback(async (name, actorKind) => {
     setActivateBusy(true); setActivateError(null);
     const result = await activateElection({ client: supabase, name, actorKind });
@@ -648,8 +671,27 @@ export default function Election() {
               {ctxLoading ? "Refreshing…" : "Refresh"}
             </button>
           </div>
+          {showWelcome && (
+            <Panel accent={TEAL} style={{ marginBottom: 18 }}>
+              <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: TEAL, marginBottom: 8 }}>
+                Welcome to ElectionCanon
+              </div>
+              <div style={{ fontFamily: DISPLAY, fontWeight: 900, fontSize: 20, color: IVORY, marginBottom: 6 }}>
+                You have joined {workspaceName || "this campaign"}
+              </div>
+              <div style={{ fontFamily: UI, fontSize: 13, color: MUTED, marginBottom: 14 }}>
+                Head to Territory or Organisation to see your role and responsibility.
+              </div>
+              <button onClick={() => { setShowWelcome(false); nav("/election", { replace: true }); }}
+                style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase",
+                  padding: "11px 18px", border: "none", background: TEAL, color: BLACK, cursor: "pointer" }}>
+                Go to My Campaign →
+              </button>
+            </Panel>
+          )}
           {section === "home" && <HomeSection ctx={ctx} onSection={setSection} workspaceName={workspaceName} />}
           {section === "territory" && <TerritorySection ctx={ctx} campaignId={campaignId} refresh={refresh} />}
+          {section === "organisation" && <OrganisationSection ctx={ctx} campaignId={campaignId} refresh={refresh} />}
           {section === "readiness" && <ReadinessSection ctx={ctx} campaignId={campaignId} refresh={refresh} />}
           {section === "mobilize" && <MobilizeSection ctx={ctx} campaignId={campaignId} refresh={refresh} />}
           {section === "chat" && <ChatSection campaignId={campaignId} userId={userId} />}

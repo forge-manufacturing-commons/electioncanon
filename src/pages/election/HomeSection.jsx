@@ -43,9 +43,74 @@ function SummaryCard({ label, accent, children, onOpen, openLabel }) {
   );
 }
 
+// CAMPAIGN ONBOARDING PASS — geography name lookups for MyScopeCard. One
+// targeted single-row query per level (mirrors acceptInvitation()'s own
+// lazy, single-row polling-unit lookup) — never an eager constituency-wide
+// fetch just to show one coordinator their own territory's name.
+const GEOGRAPHY_LOOKUP = Object.freeze({
+  lga: { table: "geography_lgas", select: "id, name" },
+  ward: { table: "geography_wards", select: "id, name" },
+  polling_unit: { table: "geography_polling_units", select: "id, name, code" },
+});
+
+const RESPONSIBILITY_ROLE_LABEL = Object.freeze({
+  CONSTITUENCY_LEAD: "Constituency Lead", LGA_COORDINATOR: "LGA Coordinator",
+  WARD_COORDINATOR: "Ward Coordinator", POLLING_UNIT_AGENT: "Polling Unit Agent",
+});
+
+function MyScopeCard({ campaignId, userId, responsibility, onOpenChat }) {
+  const [geographyName, setGeographyName] = useState(null);
+  const [opening, setOpening] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const lookup = GEOGRAPHY_LOOKUP[responsibility.level];
+    if (!lookup || !responsibility.geographyRef) { setGeographyName(null); return; }
+    (async () => {
+      const { data } = await supabase.from(lookup.table).select(lookup.select).eq("id", responsibility.geographyRef).maybeSingle();
+      if (!cancelled) setGeographyName(data?.name ?? data?.code ?? null);
+    })();
+    return () => { cancelled = true; };
+  }, [responsibility.level, responsibility.geographyRef]);
+
+  const roleLabel = RESPONSIBILITY_ROLE_LABEL[responsibility.responsibilityRole] ?? "Coordinator";
+  const levelLabel = { lga: "LGA", ward: "Ward", polling_unit: "Polling Unit" }[responsibility.level] ?? responsibility.level;
+
+  const openChat = async () => {
+    setOpening(true);
+    await chatApi.ensureGeographyRoom({
+      client: supabase, userId, campaignId, level: responsibility.level, geographyRef: responsibility.geographyRef,
+      name: `${geographyName ?? levelLabel} Coordination`,
+    });
+    setOpening(false);
+    onOpenChat();
+  };
+
+  return (
+    <div style={{ gridColumn: "1 / -1" }}>
+      <Label>Your scope</Label>
+      <Panel accent={TEAL}>
+        <div style={{ fontFamily: DISPLAY, fontWeight: 900, fontSize: "clamp(18px,2.4vw,24px)", color: IVORY, marginBottom: 6 }}>
+          {roleLabel}{geographyName ? ` — ${geographyName}` : ""}
+        </div>
+        <div style={{ fontFamily: UI, fontSize: 12, color: MUTED, marginBottom: 14 }}>
+          {levelLabel} · status: {responsibility.status ?? "ASSIGNED"} · training: {responsibility.trainingStatus ?? "NOT_STARTED"}
+        </div>
+        <button onClick={openChat} disabled={opening}
+          style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.12em",
+            textTransform: "uppercase", padding: "12px 20px", border: "none", background: TEAL,
+            color: BLACK, cursor: opening ? "default" : "pointer", clipPath: FORGE_CLIPS.button, opacity: opening ? 0.6 : 1 }}>
+          {opening ? "Opening…" : `Open ${levelLabel} Coordination Chat →`}
+        </button>
+      </Panel>
+    </div>
+  );
+}
+
 export default function HomeSection({ ctx, onSection, workspaceName }) {
   const [commsSummary, setCommsSummary] = useState(null);
   const [studioSummary, setStudioSummary] = useState(null);
+  const [myUserId, setMyUserId] = useState(null);
 
   const campaignId = ctx?.scope?.campaignId;
 
@@ -70,6 +135,10 @@ export default function HomeSection({ ctx, onSection, workspaceName }) {
         scheduled: assets.filter((a) => a.status === "scheduled").length,
       });
     })();
+    (async () => {
+      const authUser = (await supabase.auth.getUser()).data?.user?.id;
+      if (!cancelled) setMyUserId(authUser ?? null);
+    })();
     return () => { cancelled = true; };
   }, [campaignId]); // eslint-disable-line
 
@@ -79,6 +148,18 @@ export default function HomeSection({ ctx, onSection, workspaceName }) {
   const complete = claims.filter((c) => c.status === STATUS.COMPLETE).length;
   const nextClaim = claims.find((c) => c.status !== STATUS.COMPLETE);
   const nextAction = nextClaim ? (NEXT_ACTION_BY_DIMENSION[nextClaim.dimension] ?? "Review your readiness gaps.") : null;
+
+  // CAMPAIGN ONBOARDING PASS — "My Scope" is shown only to an LGA/Ward/PU
+  // Coordinator (someone who accepted a geography-scoped invitation).
+  // Owner/manager and a Constituency Lead keep today's full-campaign Home
+  // unchanged: a Constituency Lead's own scope already IS the whole
+  // campaign's territory under the current single-constituency model, so a
+  // separate scoped view would just duplicate this same page.
+  const myPersonRef = campaignId && myUserId ? `invite:${campaignId}:${myUserId}` : null;
+  const myResponsibility = myPersonRef
+    ? Object.values(view.responsibilities ?? {}).find((r) => r.person === myPersonRef
+        && r.responsibilityRole && r.responsibilityRole !== "CONSTITUENCY_LEAD")
+    : null;
 
   const people = Object.values(view.people ?? {});
   const wards = Object.values(view.wards ?? {});
@@ -125,6 +206,10 @@ export default function HomeSection({ ctx, onSection, workspaceName }) {
           ) : null}
         </Panel>
       </div>
+
+      {myResponsibility && (
+        <MyScopeCard campaignId={campaignId} userId={myUserId} responsibility={myResponsibility} onOpenChat={() => onSection("chat")} />
+      )}
 
       <div style={{ gridColumn: "1 / -1" }}>
         <Label>What needs attention today</Label>

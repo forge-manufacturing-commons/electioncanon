@@ -76,6 +76,39 @@ export async function listRooms({ client, campaignId }) {
   return { rooms: data ?? [], error: null };
 }
 
+// CAMPAIGN ONBOARDING PASS — unlike createRoom() below (open self-join for
+// any active campaign member, unchanged), a room created THROUGH THIS
+// function always carries a real `scope_ref`, which is exactly what the
+// migration's narrowed self-join RLS policy checks against
+// has_responsibility_for() — so joining an LGA/Ward/Polling-Unit room
+// created this way genuinely requires holding that responsibility (or
+// being owner/manager), not merely campaign membership. Idempotent: reuses
+// an existing room for the same (campaign, level, geography) rather than
+// creating a duplicate.
+export async function ensureGeographyRoom({ client, userId, campaignId, level, geographyRef, name }) {
+  const { data: existing, error: findError } = await client
+    .from("campaign_chat_rooms")
+    .select("id, name, scope_type, scope_ref, created_at")
+    .eq("campaign_id", campaignId).eq("scope_type", level).eq("scope_ref", geographyRef)
+    .maybeSingle();
+  if (findError) return { room: null, error: findError.message };
+
+  let room = existing;
+  if (!room) {
+    const { data: created, error: createError } = await client
+      .from("campaign_chat_rooms")
+      .insert({ campaign_id: campaignId, name, scope_type: level, scope_ref: geographyRef, created_by: userId })
+      .select("id, name, scope_type, scope_ref, created_at")
+      .maybeSingle();
+    if (createError) return { room: null, error: createError.message };
+    room = created;
+  }
+
+  const { joined, error: joinError } = await joinRoom({ client, userId, roomId: room.id });
+  if (!joined) return { room: null, error: joinError };
+  return { room, error: null };
+}
+
 export async function createRoom({ client, userId, campaignId, name, scopeType = "ward", scopeRef = null }) {
   const clean = String(name ?? "").trim();
   if (!clean) return { room: null, error: "a room name is required" };
@@ -166,4 +199,4 @@ export async function getUnreadCounts({ client, userId, rooms }) {
   return { counts, error: null };
 }
 
-export default { ensureNationalRoom, listRooms, createRoom, joinRoom, listMessages, sendMessage, markRead, getUnreadCounts };
+export default { ensureNationalRoom, ensureGeographyRoom, listRooms, createRoom, joinRoom, listMessages, sendMessage, markRead, getUnreadCounts };

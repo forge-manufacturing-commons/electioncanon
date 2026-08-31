@@ -22,6 +22,7 @@ export const DISPLAY = "var(--forge-display-font, 'Poppins', system-ui, sans-ser
 export const SECTIONS = Object.freeze([
   { id: "home", label: "Home" },
   { id: "territory", label: "Territory" },
+  { id: "organisation", label: "Organisation" },
   { id: "readiness", label: "Readiness" },
   { id: "mobilize", label: "Mobilize" },
   { id: "chat", label: "Chat" },
