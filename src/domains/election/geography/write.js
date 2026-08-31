@@ -244,16 +244,33 @@ export async function executeChangeResponsibilityStatus({ draft, campaign, userI
   return insertEvent({ client, campaign, userId, event, confirmationId });
 }
 
+// THIS TABLE NOW CARRIES TWO INDEPENDENT UNIQUE CONSTRAINTS (scale-hardening
+// pass, 20260830000000_election_responsibility_slot_uniqueness.sql) — every
+// sibling insertEvent() in this codebase (mobilization/write.js,
+// electionDay/write.js) treats ANY 23505 as "already recorded," which is
+// only safe when event_id is the ONLY unique constraint in play. Here it is
+// not: a 23505 on the NEW responsibility-slot index means a DIFFERENT
+// event_id just tried to claim an already-assigned (campaign, level,
+// geographyRef) slot — a real conflict, never a safe-to-ignore replay. The
+// two are told apart by constraint name, and an unrecognised 23505 fails
+// closed (reported as an error) rather than assumed to be a harmless
+// duplicate — the opposite assumption every sibling module safely makes,
+// because none of them shares this table with a second unique constraint.
 async function insertEvent({ client, campaign, userId, event, confirmationId }) {
   const { error } = await client.from("election_events").insert({
     event_id: event.eventId, campaign_id: campaign, type: event.type,
     actor: userId, schema_version: "1", payload: event,
   });
   if (error) {
-    if (error.code === "23505" || /duplicate key/i.test(error.message ?? "")) {
+    const message = error.message ?? "";
+    if (error.code === "23505" && message.includes("election_events_event_id_key")) {
       return { success: true, alreadyRecorded: true, error: null, eventId: confirmationId };
     }
-    return { success: false, alreadyRecorded: false, error: error.message };
+    if (error.code === "23505" && message.includes("election_events_responsibility_slot_uidx")) {
+      return { success: false, alreadyRecorded: false,
+        error: "this geography slot already has a responsibility recorded — refresh to see who" };
+    }
+    return { success: false, alreadyRecorded: false, error: message };
   }
   return { success: true, alreadyRecorded: false, error: null, eventId: confirmationId, event };
 }

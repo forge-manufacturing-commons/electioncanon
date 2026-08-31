@@ -13,7 +13,7 @@
 import {
   proposeSetTerritory, executeSetTerritory,
 } from "../src/domains/election/geography/write.js";
-import { getConstituencyTerritory, listConstituencies } from "../src/domains/election/geography/read.js";
+import { getConstituencyTerritory, listConstituencies, listPollingUnitsForWard } from "../src/domains/election/geography/read.js";
 import { projectElection } from "../src/domains/election/projections.js";
 import { ELECTION_EVENT_TYPES } from "../src/domains/election/events.js";
 
@@ -31,7 +31,7 @@ function fakeEventClient() {
       return {
         insert: async (row) => {
           if (rows.some((r) => r.table === table && r.event_id === row.event_id)) {
-            const err = new Error("duplicate key value violates unique constraint");
+            const err = new Error('duplicate key value violates unique constraint "election_events_event_id_key"');
             err.code = "23505";
             return { error: err };
           }
@@ -48,13 +48,21 @@ const logFor = (client, campaignId) =>
 // ---------- reference-table fake client (geography_*) ----------
 function fakeTable(rows) {
   let filtered = rows;
+  let countMode = false;
   const builder = {
-    select() { return builder; },
+    // Mirrors Supabase's `.select(cols, {count:'exact', head:true})` — a
+    // bounded COUNT query that transfers no row data, the exact mechanism
+    // getConstituencyTerritory() now uses for polling-unit totals (see
+    // read.js's own scale-hardening header) instead of fetching every row.
+    select(_cols, opts) { if (opts?.count) countMode = true; return builder; },
     eq(key, value) { filtered = filtered.filter((r) => r[key] === value); return builder; },
     in(key, values) { filtered = filtered.filter((r) => values.includes(r[key])); return builder; },
     order() { return builder; },
     async maybeSingle() { return { data: filtered[0] ?? null, error: null }; },
-    then(resolve) { resolve({ data: filtered, error: null }); },
+    then(resolve) {
+      if (countMode) { resolve({ data: null, count: filtered.length, error: null }); return; }
+      resolve({ data: filtered, error: null });
+    },
   };
   return builder;
 }
@@ -97,11 +105,40 @@ const CONSTITUENCIES = geographyFixture.geography_constituencies;
   ok("R1. getConstituencyTerritory resolves with no error", error === null);
   ok("R2. it resolves EXACTLY the 3 acceptance-test LGAs: Okpe, Sapele, Uvwie",
      territory.lgas.length === 3 && territory.lgas.map((l) => l.name).join(",") === "Okpe,Sapele,Uvwie");
-  ok("R3. wards/pollingUnits are honestly empty — no fabricated rows", territory.wards.length === 0 && territory.pollingUnits.length === 0);
+  ok("R3. wards are honestly empty, pollingUnitTotal is honestly 0 — no fabricated rows", territory.wards.length === 0 && territory.pollingUnitTotal === 0);
 
   const { data: constituencies } = await listConstituencies({ client, officeId: "house_of_reps", stateCode: "delta" });
   ok("R4. listConstituencies finds the seeded Okpe/Sapele/Uvwie constituency for House of Reps / Delta",
      constituencies.length === 1 && constituencies[0].name === "Okpe/Sapele/Uvwie Federal Constituency");
+}
+
+// ---------- scale-hardening: polling-unit TOTAL is a bounded count, never a full row fetch ----------
+{
+  // A fixture WITH real wards/polling units, to prove the count path
+  // actually works (not merely that it's skipped when empty, per R3 above).
+  const WARD_A = "ward-a", WARD_B = "ward-b";
+  const scaledFixture = {
+    ...geographyFixture,
+    geography_wards: [
+      { id: WARD_A, lga_id: LGA_OKPE, name: "Okpe Ward 1" },
+      { id: WARD_B, lga_id: LGA_SAPELE, name: "Sapele Ward 1" },
+    ],
+    geography_polling_units: [
+      { id: "pu-1", ward_id: WARD_A, code: "PU001", name: null },
+      { id: "pu-2", ward_id: WARD_A, code: "PU002", name: null },
+      { id: "pu-3", ward_id: WARD_B, code: "PU003", name: null },
+    ],
+  };
+  const client = fakeGeographyClient(scaledFixture);
+  const { data: territory } = await getConstituencyTerritory({ client, constituencyId: CONSTITUENCY_ID });
+  ok("R5. pollingUnitTotal correctly counts all 3 PUs across both wards, via a count-only query",
+     territory.pollingUnitTotal === 3);
+  ok("R5b. the ward rows themselves ARE fetched in full (small, bounded) — 2 wards, both present",
+     territory.wards.length === 2 && territory.wards.map((w) => w.name).sort().join(",") === "Okpe Ward 1,Sapele Ward 1");
+
+  const { data: puForWardA } = await listPollingUnitsForWard({ client, wardId: WARD_A });
+  ok("R6. listPollingUnitsForWard (the lazy per-ward fetch TerritoryExplorer uses on expand) returns ONLY that ward's 2 PUs, not all 3",
+     puForWardA.length === 2 && puForWardA.every((p) => p.ward_id === WARD_A));
 }
 
 // ---------- proposeSetTerritory / executeSetTerritory ----------

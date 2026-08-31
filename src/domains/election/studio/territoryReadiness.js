@@ -55,7 +55,18 @@ export function deriveTerritoryReadiness({ view = {}, geographyTree = null } = {
 
   const lgas = geographyTree?.lgas ?? [];
   const wards = geographyTree?.wards ?? [];
-  const pollingUnits = geographyTree?.pollingUnits ?? [];
+  // Polling-unit TOTAL only — never the full row list. A constituency's
+  // polling-unit count can be the largest number in this whole tree (unlike
+  // LGAs/wards, which stay small enough to fetch as real rows), so
+  // geography/read.js's getConstituencyTerritory() deliberately returns a
+  // count-only `pollingUnitTotal` (a bounded `{count:'exact',head:true}`
+  // query, no row data transferred) instead of every polling-unit row —
+  // see that function's own header. `assigned` is counted directly from
+  // this campaign's own responsibility events (same trust model
+  // `constituencyLeadResp` already uses — PREPARE-time-validated, not a
+  // second row-membership check), not by cross-referencing row ids that
+  // are no longer fetched here.
+  const totalPollingUnits = geographyTree?.pollingUnitTotal ?? geographyTree?.pollingUnits?.length ?? 0;
 
   const lgaAssignedIds = new Set(lgaResps.map((r) => r.geographyRef));
   const lgaAssignedCount = lgas.filter((l) => lgaAssignedIds.has(l.id)).length;
@@ -82,10 +93,8 @@ export function deriveTerritoryReadiness({ view = {}, geographyTree = null } = {
         percent: Math.round((wards.filter((w) => wardAssignedIds.has(w.id)).length / wards.length) * 100) }
     : { status: "NOT_ESTABLISHED", note: "no ward reference geography imported for this constituency — see supabase/geography-import/README.md" };
 
-  const puAssignedIds = new Set(puResps.map((r) => r.geographyRef));
-  const pollingUnitCoverage = pollingUnits.length > 0
-    ? { totalPollingUnits: pollingUnits.length, assigned: pollingUnits.filter((p) => puAssignedIds.has(p.id)).length,
-        percent: Math.round((pollingUnits.filter((p) => puAssignedIds.has(p.id)).length / pollingUnits.length) * 100) }
+  const pollingUnitCoverage = totalPollingUnits > 0
+    ? { totalPollingUnits, assigned: puResps.length, percent: Math.round((puResps.length / totalPollingUnits) * 100) }
     : { status: "NOT_ESTABLISHED", note: "no polling-unit reference geography imported — see supabase/geography-import/README.md" };
 
   // Training completion is only ever computed over responsibilities whose

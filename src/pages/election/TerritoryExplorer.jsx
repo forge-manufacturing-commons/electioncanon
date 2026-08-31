@@ -15,7 +15,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase.js";
-import { getConstituencyTerritory } from "../../domains/election/geography/read.js";
+import { getConstituencyTerritory, listPollingUnitsForWard } from "../../domains/election/geography/read.js";
 import { prepareGeographyWrite, approveGeographyWrite, GEOGRAPHY_OPERATION } from "../../os/electionWebAdapter.js";
 import { GEOGRAPHY_LEVEL } from "../../domains/election/geography/write.js";
 import { deriveTerritoryReadiness } from "../../domains/election/studio/territoryReadiness.js";
@@ -60,6 +60,22 @@ export default function TerritoryExplorer({ ctx, campaignId, refresh, territory,
   const [tree, setTree] = useState(null);
   const [loading, setLoading] = useState(Boolean(territory.constituency));
   const [expandedLga, setExpandedLga] = useState(null);
+  // Ward -> polling units is the LAZY step (see read.js's getConstituencyTerritory
+  // header) — a ward's own PUs are fetched only when that ward is expanded,
+  // cached here by ward id so re-expanding doesn't re-fetch.
+  const [expandedWard, setExpandedWard] = useState(null);
+  const [pollingUnitsByWard, setPollingUnitsByWard] = useState({});
+  const [pollingUnitsLoading, setPollingUnitsLoading] = useState(null);
+
+  const toggleWard = async (wardId) => {
+    if (expandedWard === wardId) { setExpandedWard(null); return; }
+    setExpandedWard(wardId);
+    if (pollingUnitsByWard[wardId] !== undefined) return;
+    setPollingUnitsLoading(wardId);
+    const { data } = await listPollingUnitsForWard({ client: supabase, wardId });
+    setPollingUnitsByWard((prev) => ({ ...prev, [wardId]: data ?? [] }));
+    setPollingUnitsLoading(null);
+  };
 
   useEffect(() => {
     if (!territory.constituency) { setTree(null); setLoading(false); return undefined; }
@@ -177,20 +193,28 @@ export default function TerritoryExplorer({ ctx, campaignId, refresh, territory,
                       </div>
                     ) : (
                       wardsForLga.map((ward) => {
-                        const pusForWard = tree.pollingUnits.filter((p) => p.ward_id === ward.id);
+                        const wardExpanded = expandedWard === ward.id;
+                        const pusForWard = pollingUnitsByWard[ward.id];
                         return (
                           <div key={ward.id} style={{ marginBottom: 10 }}>
-                            <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 12, color: IVORY }}>{ward.name}</div>
-                            {pusForWard.length === 0 ? (
-                              <div style={{ fontFamily: UI, fontSize: 11, color: MUTED, marginLeft: 14 }}>
-                                No polling units imported yet for this ward.
-                              </div>
-                            ) : (
-                              pusForWard.map((pu) => (
-                                <div key={pu.id} style={{ fontFamily: UI, fontSize: 11, color: MUTED, marginLeft: 14 }}>
-                                  {pu.code}{pu.name ? ` — ${pu.name}` : ""}
+                            <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 12, color: IVORY, cursor: "pointer" }}
+                              onClick={() => toggleWard(ward.id)}>
+                              {wardExpanded ? "▾" : "▸"} {ward.name}
+                            </div>
+                            {wardExpanded && (
+                              pollingUnitsLoading === ward.id ? (
+                                <div style={{ fontFamily: UI, fontSize: 11, color: MUTED, marginLeft: 14 }}>Loading polling units…</div>
+                              ) : !pusForWard || pusForWard.length === 0 ? (
+                                <div style={{ fontFamily: UI, fontSize: 11, color: MUTED, marginLeft: 14 }}>
+                                  No polling units imported yet for this ward.
                                 </div>
-                              ))
+                              ) : (
+                                pusForWard.map((pu) => (
+                                  <div key={pu.id} style={{ fontFamily: UI, fontSize: 11, color: MUTED, marginLeft: 14 }}>
+                                    {pu.code}{pu.name ? ` — ${pu.name}` : ""}
+                                  </div>
+                                ))
+                              )
                             )}
                           </div>
                         );

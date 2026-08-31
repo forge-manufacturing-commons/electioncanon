@@ -22,6 +22,12 @@ const ok = (n, c) => { if (c) { pass++; console.log(`  ok   ${n}`); } else { fai
 
 console.log("\nELECTORAL GEOGRAPHY — Responsibility + Territory Readiness\n");
 
+// Simulates BOTH unique constraints election_events now carries (see
+// supabase/migrations/20260830000000_election_responsibility_slot_uniqueness.sql):
+// event_id (idempotent replay) and the NEW partial index on
+// (campaign_id, level, geographyRef) for responsibility.assigned events
+// only — proving geography/write.js's insertEvent() tells the two apart
+// correctly rather than treating every 23505 as a safe-to-ignore replay.
 function fakeEventClient() {
   const rows = [];
   return {
@@ -30,9 +36,19 @@ function fakeEventClient() {
       return {
         insert: async (row) => {
           if (rows.some((r) => r.table === table && r.event_id === row.event_id)) {
-            const err = new Error("duplicate key value violates unique constraint");
+            const err = new Error('duplicate key value violates unique constraint "election_events_event_id_key"');
             err.code = "23505";
             return { error: err };
+          }
+          if (row.type === "responsibility.assigned") {
+            const slotTaken = rows.some((r) => r.table === table && r.campaign_id === row.campaign_id &&
+              r.type === "responsibility.assigned" &&
+              r.payload?.level === row.payload?.level && r.payload?.geographyRef === row.payload?.geographyRef);
+            if (slotTaken) {
+              const err = new Error('duplicate key value violates unique constraint "election_events_responsibility_slot_uidx"');
+              err.code = "23505";
+              return { error: err };
+            }
           }
           rows.push({ table, ...row });
           return { error: null };
@@ -163,6 +179,43 @@ const GEOGRAPHY_TREE = {
      readiness.gaps.some((g) => /constituency has no lead/.test(g.what)));
   ok("E5. every gap carries owner/deadline/dependency UNKNOWN, never a guessed value",
      readiness.gaps.every((g) => g.owner === "UNKNOWN" && g.deadline === "UNKNOWN" && g.dependency === "UNKNOWN"));
+}
+
+// ---------- concurrency: one responsibility per (campaign, level, geographyRef) slot ----------
+{
+  const client = fakeEventClient();
+  const roster2 = [...ROSTER, { id: "person-2", name: "Bello Musa", roleType: "lga_coordinator" }];
+
+  const first = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "lga", geographyRef: LGA_UVWIE }, roster: roster2, geographyTree: GEOGRAPHY_TREE,
+  });
+  const firstResult = await executeAssignResponsibility({ draft: first.draft.draft, campaign: CAMPAIGN_A, userId: USER, client, confirmationId: "resp-concurrent-1" });
+  ok("G1. the first assignment to Uvwie succeeds", firstResult.success);
+
+  // A DIFFERENT person, a DIFFERENT confirmationId/event_id, but the SAME
+  // slot (campaign A, level=lga, geographyRef=Uvwie) — simulating two users
+  // racing to assign the same LGA. This must be REFUSED, not silently
+  // treated as an idempotent replay (it is a genuinely different event).
+  const second = await proposeAssignResponsibility({
+    fields: { personId: "person-2", level: "lga", geographyRef: LGA_UVWIE }, roster: roster2, geographyTree: GEOGRAPHY_TREE,
+  });
+  const secondResult = await executeAssignResponsibility({ draft: second.draft.draft, campaign: CAMPAIGN_A, userId: USER, client, confirmationId: "resp-concurrent-2" });
+  ok("G2. a second, different person assigned to the SAME slot is REFUSED, not silently accepted",
+     secondResult.success === false && secondResult.alreadyRecorded === false);
+  ok("G3. the refusal is reported as a real error, never mistaken for an idempotent replay",
+     typeof secondResult.error === "string" && secondResult.error.length > 0);
+
+  const view = projectElection(logFor(client, CAMPAIGN_A), CAMPAIGN_A);
+  ok("G4. exactly ONE responsibility exists for Uvwie in the fold — person-1's, never overwritten or duplicated by the refused attempt",
+     Object.values(view.responsibilities).filter((r) => r.geographyRef === LGA_UVWIE).length === 1 &&
+     Object.values(view.responsibilities).find((r) => r.geographyRef === LGA_UVWIE)?.person === "person-1");
+
+  // A genuinely different slot for the same campaign is unaffected.
+  const different = await proposeAssignResponsibility({
+    fields: { personId: "person-2", level: "lga", geographyRef: LGA_SAPELE }, roster: roster2, geographyTree: GEOGRAPHY_TREE,
+  });
+  const differentResult = await executeAssignResponsibility({ draft: different.draft.draft, campaign: CAMPAIGN_A, userId: USER, client, confirmationId: "resp-concurrent-3" });
+  ok("G5. assigning a DIFFERENT LGA in the same campaign is unaffected by the slot constraint", differentResult.success);
 }
 
 // ---------- tenant isolation ----------

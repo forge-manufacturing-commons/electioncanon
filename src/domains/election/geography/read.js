@@ -29,9 +29,24 @@ export async function listConstituencies({ client, officeId, stateCode }) {
     .eq("office_id", officeId).eq("state_code", stateCode).order("name");
 }
 
-/** Returns the real LGAs under a constituency, plus the naturally-empty (until
- *  a real import lands) wards/pollingUnits arrays — see supabase/geography-
- *  import/README.md. Never fabricates a row that isn't actually in the table. */
+/** Returns the real LGAs and wards under a constituency, plus a
+ *  polling-unit TOTAL (count only, never the full row list — see the
+ *  scale-hardening note below), and the naturally-empty results (until a
+ *  real import lands) show as zero — see supabase/geography-import/README.md.
+ *  Never fabricates a row that isn't actually in the table.
+ *
+ *  SCALE NOTE: LGAs and wards are fetched as full rows because they stay
+ *  small and bounded (a federal constituency has a handful of LGAs, at
+ *  most a few dozen wards) and the Territory Explorer needs their names/ids
+ *  immediately to render the LGA -> ward drill-down. Polling units are
+ *  DIFFERENT — a single constituency can have hundreds to low thousands of
+ *  them, so this function never fetches that full list; only a bounded
+ *  count (`{count:'exact', head:true}`, no row data transferred). The
+ *  actual polling-unit ROWS for one specific ward are fetched lazily, only
+ *  when a user expands that ward — see listPollingUnitsForWard() below,
+ *  used by TerritoryExplorer.jsx's ward-click handler. This is the
+ *  "Ward -> polling units" progressive-disclosure step; "Constituency ->
+ *  everything" is exactly the unbounded pattern this function avoids. */
 export async function getConstituencyTerritory({ client, constituencyId }) {
   if (!constituencyId) return { data: null, error: null };
 
@@ -60,15 +75,15 @@ export async function getConstituencyTerritory({ client, constituencyId }) {
   }
 
   const wardIds = wards.map((w) => w.id);
-  let pollingUnits = [];
+  let pollingUnitTotal = 0;
   if (wardIds.length > 0) {
-    const { data: puRows, error: puError } = await client
-      .from("geography_polling_units").select("id, ward_id, code, name").in("ward_id", wardIds).order("code");
-    if (puError) return { data: null, error: puError };
-    pollingUnits = puRows ?? [];
+    const { count, error: puCountError } = await client
+      .from("geography_polling_units").select("id", { count: "exact", head: true }).in("ward_id", wardIds);
+    if (puCountError) return { data: null, error: puCountError };
+    pollingUnitTotal = count ?? 0;
   }
 
-  return { data: { constituency, lgas, wards, pollingUnits }, error: null };
+  return { data: { constituency, lgas, wards, pollingUnitTotal }, error: null };
 }
 
 export async function listWardsForLga({ client, lgaId }) {
