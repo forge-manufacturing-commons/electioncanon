@@ -48,6 +48,7 @@ import {
   friendlyError, UI, DISPLAY, BLACK, IVORY, TEAL, AMBER, PINK, MUTED, BORDER,
 } from "./election/shared.jsx";
 import HomeSection from "./election/HomeSection.jsx";
+import TerritorySection from "./election/TerritorySection.jsx";
 import MobilizeSection from "./election/MobilizeSection.jsx";
 import ChatSection from "./election/ChatSection.jsx";
 import CampaignStudioSection from "./election/CampaignStudioSection.jsx";
@@ -648,6 +649,7 @@ export default function Election() {
             </button>
           </div>
           {section === "home" && <HomeSection ctx={ctx} onSection={setSection} workspaceName={workspaceName} />}
+          {section === "territory" && <TerritorySection ctx={ctx} campaignId={campaignId} refresh={refresh} />}
           {section === "readiness" && <ReadinessSection ctx={ctx} campaignId={campaignId} refresh={refresh} />}
           {section === "mobilize" && <MobilizeSection ctx={ctx} campaignId={campaignId} refresh={refresh} />}
           {section === "chat" && <ChatSection campaignId={campaignId} userId={userId} />}

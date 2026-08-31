@@ -63,6 +63,12 @@ export function projectElection(log = [], campaign = null) {
   const agents = {};
   const results = {};
   const incidents = {};
+  // ELECTORAL GEOGRAPHY — `territory` is a SINGULAR field, not a map: a
+  // campaign has exactly one active territory choice at a time (see
+  // events.js's territorySetEvent header). `responsibilities` is a map,
+  // same shape discipline as `assignments`/`agents` above.
+  let territory = null;
+  const responsibilities = {};
   const feed = [];
 
   // TENANT FILTER, FIRST — see the header note above. An event for a
@@ -209,15 +215,46 @@ export function projectElection(log = [], campaign = null) {
         history: [...prev.history, { status: e.status ?? null, note: e.note ?? null, escalatedTo: e.escalatedTo ?? null, at: e.at ?? null }] };
     }
 
+    // ---------- Electoral Geography ----------
+    // `territory` — last-value-wins, the SAME single-current-state
+    // discipline `wards[id].organisation` already uses, just at the whole-
+    // campaign level instead of per-entity.
+    if (e?.type === ELECTION_EVENT_TYPES.TERRITORY.SET) {
+      territory = { id: e.territory, election: e.election ?? null, office: e.office ?? null,
+        state: e.state ?? null, constituency: e.constituency ?? null, at: e.at ?? null };
+    }
+    // `responsibilities` — same map + `history[]` shape `assignments`/
+    // `agents` already establish. ASSIGNED sets the current-state fields;
+    // STATUS_CHANGED only ever touches `status`/`trainingStatus` and appends
+    // a history entry, never touching `person`/`level`/`geographyRef`/
+    // `responsibilityRole` — an assignment is not silently reassigned by a
+    // status update.
+    const RESPONSIBILITY_DEFAULT = { person: null, level: null, geographyRef: null,
+      responsibilityRole: null, status: "ASSIGNED", trainingStatus: "NOT_STARTED", history: [] };
+    if (e?.type === ELECTION_EVENT_TYPES.RESPONSIBILITY.ASSIGNED) {
+      const prev = responsibilities[e.responsibility] ?? { id: e.responsibility, ...RESPONSIBILITY_DEFAULT };
+      responsibilities[e.responsibility] = { ...prev, person: e.person ?? prev.person, level: e.level ?? prev.level,
+        geographyRef: e.geographyRef ?? prev.geographyRef, responsibilityRole: e.responsibilityRole ?? prev.responsibilityRole,
+        status: e.status ?? prev.status, trainingStatus: e.trainingStatus ?? prev.trainingStatus };
+    }
+    if (e?.type === ELECTION_EVENT_TYPES.RESPONSIBILITY.STATUS_CHANGED) {
+      const prev = responsibilities[e.responsibility] ?? { id: e.responsibility, ...RESPONSIBILITY_DEFAULT };
+      responsibilities[e.responsibility] = { ...prev, status: e.status ?? prev.status,
+        trainingStatus: e.trainingStatus ?? prev.trainingStatus,
+        history: [...prev.history, { status: e.status ?? null, trainingStatus: e.trainingStatus ?? null, note: e.note ?? null, at: e.at ?? null }] };
+    }
+
     if (e?.type) {
       feed.push({ at: e.at, eventId: e.eventId, type: e.type,
         subject: e.candidate || e.ward || e.observer || e.document ||
-          e.person || e.assignment || e.task || e.pollingUnit || e.agent || e.result || e.incident || null,
+          e.person || e.assignment || e.task || e.pollingUnit || e.agent || e.result || e.incident ||
+          e.territory || e.responsibility || null,
         actor: e.person || null, detail: e.summary || null });
     }
   }
 
-  return deepFreeze({ candidates, wards, observers, people, assignments, tasks, pollingUnits, agents, results, incidents, feed: feed.reverse() });
+  return deepFreeze({ candidates, wards, observers, people, assignments, tasks, pollingUnits, agents, results, incidents,
+    territory, responsibilities, feed: feed.reverse() });
 }
 
 export default { projectElection };

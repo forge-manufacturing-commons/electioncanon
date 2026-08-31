@@ -95,6 +95,24 @@ export const ELECTION_EVENT_TYPES = Object.freeze({
     INCIDENT_REPORTED:     "electionday.incident.reported",
     INCIDENT_STATUS_CHANGED: "electionday.incident.status_changed",
   }),
+  // ELECTORAL GEOGRAPHY — a campaign's own SELECTION against the new
+  // geography_* reference tables (supabase/migrations/20260829000000_
+  // election_geography.sql; src/domains/election/geography/read.js), and
+  // the accountability layer built on top of it. Same log, same fold, same
+  // RLS as every type above — the reference tables themselves are a
+  // DIFFERENT, non-event-sourced, public-read layer (objective shared data,
+  // not a Canon fact about any one campaign); only the campaign's CHOICE of
+  // territory, and WHO is responsible for which part of it, are Canon facts
+  // recorded here. See geography/write.js's own header for why `level`/
+  // `geographyRef` are validated at PREPARE time against those tables and
+  // never as a database FK on this event's jsonb payload.
+  TERRITORY: Object.freeze({
+    SET: "territory.set",
+  }),
+  RESPONSIBILITY: Object.freeze({
+    ASSIGNED:       "responsibility.assigned",
+    STATUS_CHANGED: "responsibility.status_changed",
+  }),
 });
 
 /**
@@ -139,6 +157,12 @@ const REQUIRED_FIELDS_BY_TYPE = Object.freeze({
     ["incident", "campaign", "category", "description", "summary"],
   [ELECTION_EVENT_TYPES.ELECTION_DAY.INCIDENT_STATUS_CHANGED]:
     ["incident", "campaign", "status", "summary"],
+  [ELECTION_EVENT_TYPES.TERRITORY.SET]:
+    ["territory", "campaign", "election", "office", "state", "summary"],
+  [ELECTION_EVENT_TYPES.RESPONSIBILITY.ASSIGNED]:
+    ["responsibility", "campaign", "person", "level", "geographyRef", "responsibilityRole", "summary"],
+  [ELECTION_EVENT_TYPES.RESPONSIBILITY.STATUS_CHANGED]:
+    ["responsibility", "campaign", "summary"],
 });
 
 /**
@@ -172,6 +196,9 @@ export const MISSION_POLICY = Object.freeze({
   [ELECTION_EVENT_TYPES.ELECTION_DAY.RESULT_VERIFIED]:         MISSION_POLICY_LEVEL.FORBIDDEN,
   [ELECTION_EVENT_TYPES.ELECTION_DAY.INCIDENT_REPORTED]:       MISSION_POLICY_LEVEL.FORBIDDEN,
   [ELECTION_EVENT_TYPES.ELECTION_DAY.INCIDENT_STATUS_CHANGED]: MISSION_POLICY_LEVEL.FORBIDDEN,
+  [ELECTION_EVENT_TYPES.TERRITORY.SET]:                  MISSION_POLICY_LEVEL.FORBIDDEN,
+  [ELECTION_EVENT_TYPES.RESPONSIBILITY.ASSIGNED]:        MISSION_POLICY_LEVEL.FORBIDDEN,
+  [ELECTION_EVENT_TYPES.RESPONSIBILITY.STATUS_CHANGED]:  MISSION_POLICY_LEVEL.FORBIDDEN,
 });
 
 /**
@@ -198,6 +225,9 @@ export const EVENT_CAPABILITY = Object.freeze({
   [ELECTION_EVENT_TYPES.ELECTION_DAY.RESULT_VERIFIED]:         "election.day.result_verify",
   [ELECTION_EVENT_TYPES.ELECTION_DAY.INCIDENT_REPORTED]:       "election.day.incident_report",
   [ELECTION_EVENT_TYPES.ELECTION_DAY.INCIDENT_STATUS_CHANGED]: "election.day.incident_status",
+  [ELECTION_EVENT_TYPES.TERRITORY.SET]:                 "election.geography.territory_set",
+  [ELECTION_EVENT_TYPES.RESPONSIBILITY.ASSIGNED]:       "election.geography.responsibility_assign",
+  [ELECTION_EVENT_TYPES.RESPONSIBILITY.STATUS_CHANGED]: "election.geography.responsibility_status",
 });
 
 // ALPHA 1.0 — Mobilization and Election Day carry NO REQUIRED_ACTOR_KIND
@@ -235,6 +265,9 @@ export const REQUIRED_ACTOR_KIND = Object.freeze({
   [ELECTION_EVENT_TYPES.CAMPAIGN.WARD_ASSIGNED]:        "candidate_campaign",
   [ELECTION_EVENT_TYPES.CAMPAIGN.WARD_STATUS_REPORTED]: "candidate_campaign",
   [ELECTION_EVENT_TYPES.OBSERVER.ASSIGNED]:             "observer_organisation",
+  // TERRITORY.SET / RESPONSIBILITY.* carry NO entry — same fail-open
+  // precedent as Mobilization/Election Day above: both actor kinds with a
+  // live readiness engine legitimately operate a territory.
 });
 
 function compact(fields) {
@@ -582,6 +615,92 @@ export function incidentStatusEvent({ incident, campaign, status, note, escalate
   });
 }
 
+// ---------- Electoral Geography factories ----------
+//
+// `territory` is the SUBJECT identifier for this campaign's own territory
+// choice (the same role `candidate`/`ward` play for their own event types) —
+// a caller-chosen id. `projectElection()` folds this to a SINGULAR field,
+// not a map: a campaign has exactly one active territory at a time (see
+// projections.js). `election` stays FREE TEXT — no election-calendar
+// reference table exists this pass, the same honesty every other undated
+// fact in this file already carries. `office`/`state`/`constituency` are
+// real ids resolved by the caller against the new geography_* reference
+// tables BEFORE this factory is ever called (geography/write.js's
+// proposeSetTerritory) — this factory performs no validation itself,
+// consistent with `roleType` against PERSON_ROLE_TYPES and every other
+// event-carried reference in this codebase: enforcement is at PREPARE
+// time, never a database FK on the jsonb payload. `constituency` is
+// OPTIONAL/compacted — President and Governor resolve directly to a
+// state, with no sub-state constituency to name.
+export function territorySetEvent({ territory, campaign, election, office, state, constituency, summary, ...extra }) {
+  if (territory == null) throw new Error("territorySetEvent: `territory` is required");
+  if (campaign == null) throw new Error("territorySetEvent: `campaign` is required");
+  if (election == null) throw new Error("territorySetEvent: `election` is required");
+  if (office == null) throw new Error("territorySetEvent: `office` is required");
+  if (state == null) throw new Error("territorySetEvent: `state` is required");
+  return createEvent({
+    type: ELECTION_EVENT_TYPES.TERRITORY.SET,
+    territory, campaign, election, office, state, ...compact({ constituency }),
+    summary: summary ?? `territory set: ${office} / ${state}${constituency ? ` / ${constituency}` : ""}`,
+    ...extra,
+  });
+}
+
+// `responsibility` — the SUBJECT identifier, the same role `assignment`
+// plays for MOBILIZATION.ASSIGNMENT_CREATED — a DIFFERENT, independent fact
+// (see that type's own header); do not confuse the two "assignment"
+// concepts. `person` references an existing Mobilization roster entry
+// (`view.people`, from PERSON_ADDED) — this factory does not create a
+// person, only names one that must already exist (checked by
+// geography/write.js's proposeAssignResponsibility, the same
+// caller-validates-before-the-factory discipline as everywhere else in this
+// file). `level` is one of 'constituency'|'lga'|'ward'|'polling_unit';
+// `geographyRef` is the real geography_* table row id for that level — a
+// plain string/uuid payload field, not a database FK, same reasoning as
+// `territorySetEvent` above. `responsibilityRole` is a NEW, separate
+// vocabulary from Mobilization's PERSON_ROLE_TYPES (that describes a
+// person's general roster role, e.g. "volunteer"; this describes what THIS
+// specific assignment means — see geography/write.js's
+// RESPONSIBILITY_ROLE). `status` defaults to "ASSIGNED", reusing
+// Mobilization's ASSIGNMENT_STATUS vocabulary verbatim (imported, not
+// redeclared here) so the two systems' status words never drift apart even
+// though the two facts are otherwise fully independent.
+export function responsibilityAssignedEvent({ responsibility, campaign, person, level, geographyRef,
+  responsibilityRole, status, trainingStatus, summary, ...extra }) {
+  if (responsibility == null) throw new Error("responsibilityAssignedEvent: `responsibility` is required");
+  if (campaign == null) throw new Error("responsibilityAssignedEvent: `campaign` is required");
+  if (person == null) throw new Error("responsibilityAssignedEvent: `person` is required");
+  if (level == null) throw new Error("responsibilityAssignedEvent: `level` is required");
+  if (geographyRef == null) throw new Error("responsibilityAssignedEvent: `geographyRef` is required");
+  if (responsibilityRole == null) throw new Error("responsibilityAssignedEvent: `responsibilityRole` is required");
+  return createEvent({
+    type: ELECTION_EVENT_TYPES.RESPONSIBILITY.ASSIGNED,
+    responsibility, campaign, person, level, geographyRef, responsibilityRole,
+    status: status ?? "ASSIGNED", ...compact({ trainingStatus }),
+    summary: summary ?? `${responsibilityRole} assigned for ${level} ${geographyRef}`,
+    ...extra,
+  });
+}
+
+// `status`/`trainingStatus` are BOTH optional here — unlike
+// assignmentStatusEvent's hard-required `status`, a status-change event may
+// report only a training-completion update with no status change, or vice
+// versa. geography/write.js's proposeChangeResponsibilityStatus enforces
+// "at least one of the two is present" as a business rule before this
+// factory is ever called — the same caller-validates-first discipline every
+// soft-optional field in this file already follows. Both are compacted so a
+// status-only update carries no stray `trainingStatus: undefined` field.
+export function responsibilityStatusEvent({ responsibility, campaign, status, trainingStatus, note, summary, ...extra }) {
+  if (responsibility == null) throw new Error("responsibilityStatusEvent: `responsibility` is required");
+  if (campaign == null) throw new Error("responsibilityStatusEvent: `campaign` is required");
+  return createEvent({
+    type: ELECTION_EVENT_TYPES.RESPONSIBILITY.STATUS_CHANGED,
+    responsibility, campaign, ...compact({ status, trainingStatus, note }),
+    summary: summary ?? `responsibility ${responsibility} status updated`,
+    ...extra,
+  });
+}
+
 export default {
   ELECTION_EVENT_TYPES, MISSION_POLICY, EVENT_CAPABILITY, REQUIRED_ACTOR_KIND,
   validateElectionEvent, assertElectionEvent,
@@ -589,5 +708,6 @@ export default {
   personAddedEvent, assignmentCreatedEvent, assignmentStatusEvent, taskCreatedEvent, taskStatusEvent,
   pollingUnitAddedEvent, agentAssignedEvent, agentStatusEvent, resultCapturedEvent, resultOcrProcessedEvent, resultVerifiedEvent,
   incidentReportedEvent, incidentStatusEvent,
+  territorySetEvent, responsibilityAssignedEvent, responsibilityStatusEvent,
   makeEventId, EVENT_SCHEMA_VERSION,
 };

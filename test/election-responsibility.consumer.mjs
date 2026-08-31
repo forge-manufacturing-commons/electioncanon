@@ -1,0 +1,191 @@
+// ============================================================
+// ELECTORAL GEOGRAPHY — RESPONSIBILITY + TERRITORY READINESS  (MOCK evidence)
+//
+// Same fake-client pattern as election-mobilization.consumer.mjs and
+// election-geography.consumer.mjs. Proves: responsibility assignment/status
+// folds correctly, ward/polling-unit assignment is REFUSED (not fabricated)
+// while no real geography is imported, deriveTerritoryReadiness computes a
+// real percentage from real rows, and tenant isolation holds.
+// ============================================================
+
+import {
+  proposeAssignResponsibility, executeAssignResponsibility,
+  proposeChangeResponsibilityStatus, executeChangeResponsibilityStatus,
+  RESPONSIBILITY_ROLE,
+} from "../src/domains/election/geography/write.js";
+import { deriveTerritoryReadiness } from "../src/domains/election/studio/territoryReadiness.js";
+import { projectElection } from "../src/domains/election/projections.js";
+import { ELECTION_EVENT_TYPES } from "../src/domains/election/events.js";
+
+let pass = 0, fail = 0;
+const ok = (n, c) => { if (c) { pass++; console.log(`  ok   ${n}`); } else { fail++; console.log(`  FAIL ${n}`); } };
+
+console.log("\nELECTORAL GEOGRAPHY — Responsibility + Territory Readiness\n");
+
+function fakeEventClient() {
+  const rows = [];
+  return {
+    rows,
+    from(table) {
+      return {
+        insert: async (row) => {
+          if (rows.some((r) => r.table === table && r.event_id === row.event_id)) {
+            const err = new Error("duplicate key value violates unique constraint");
+            err.code = "23505";
+            return { error: err };
+          }
+          rows.push({ table, ...row });
+          return { error: null };
+        },
+      };
+    },
+  };
+}
+const logFor = (client, campaignId) =>
+  client.rows.filter((r) => r.table === "election_events" && r.campaign_id === campaignId).map((r) => r.payload).reverse();
+
+const CAMPAIGN_A = "camp-a";
+const CAMPAIGN_B = "camp-b";
+const USER = "user-1";
+
+const ROSTER = [{ id: "person-1", name: "Amaka Obi", roleType: "lga_coordinator" }];
+const LGA_OKPE = "lga-okpe", LGA_SAPELE = "lga-sapele", LGA_UVWIE = "lga-uvwie";
+// Empty wards/pollingUnits, exactly as the real project stands today (no
+// authoritative import yet) — see supabase/geography-import/README.md.
+const GEOGRAPHY_TREE = {
+  constituency: { id: "constituency-osu", name: "Okpe/Sapele/Uvwie Federal Constituency" },
+  lgas: [{ id: LGA_OKPE, name: "Okpe" }, { id: LGA_SAPELE, name: "Sapele" }, { id: LGA_UVWIE, name: "Uvwie" }],
+  wards: [], pollingUnits: [],
+};
+
+// ---------- LGA-level assignment succeeds ----------
+{
+  const client = fakeEventClient();
+  const prepared = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "lga", geographyRef: LGA_OKPE }, roster: ROSTER, geographyTree: GEOGRAPHY_TREE,
+  });
+  ok("A1. proposeAssignResponsibility at level=lga with a real LGA id is PREPARED", prepared.status === "PREPARED");
+  ok("A2. the role is auto-set to LGA_COORDINATOR, paired 1:1 with level", prepared.draft.draft.responsibilityRole === RESPONSIBILITY_ROLE.LGA_COORDINATOR);
+
+  const result = await executeAssignResponsibility({ draft: prepared.draft.draft, campaign: CAMPAIGN_A, userId: USER, client, confirmationId: "resp-1" });
+  ok("A3. executeAssignResponsibility succeeds and inserts a responsibility.assigned event",
+     result.success && result.event.type === ELECTION_EVENT_TYPES.RESPONSIBILITY.ASSIGNED);
+
+  const view = projectElection(logFor(client, CAMPAIGN_A), CAMPAIGN_A);
+  ok("A4. the fold reconstructs the responsibility with person/level/geographyRef intact",
+     view.responsibilities["resp-1"]?.person === "person-1" && view.responsibilities["resp-1"]?.level === "lga" &&
+     view.responsibilities["resp-1"]?.geographyRef === LGA_OKPE && view.responsibilities["resp-1"]?.status === "ASSIGNED");
+}
+
+// ---------- unknown person / unrecognised LGA refused ----------
+{
+  const unknownPerson = await proposeAssignResponsibility({
+    fields: { personId: "not-on-roster", level: "lga", geographyRef: LGA_OKPE }, roster: ROSTER, geographyTree: GEOGRAPHY_TREE,
+  });
+  ok("B1. an assignee not on the campaign's own roster is refused (NEEDS_PERSON), never a partial draft",
+     unknownPerson.status === "NEEDS_PERSON" && unknownPerson.draft === null);
+
+  const unknownLga = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "lga", geographyRef: "not-a-real-lga" }, roster: ROSTER, geographyTree: GEOGRAPHY_TREE,
+  });
+  ok("B2. an LGA id not in this constituency's own resolved territory is refused (NEEDS_GEOGRAPHY_REF)", unknownLga.status === "NEEDS_GEOGRAPHY_REF");
+}
+
+// ---------- ward/polling-unit assignment refused — NEVER fabricated ----------
+{
+  const wardAttempt = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "ward", geographyRef: "any-ward-id" }, roster: ROSTER, geographyTree: GEOGRAPHY_TREE,
+  });
+  ok("C1. assigning at ward level against an empty geography_wards fixture is REFUSED, not accepted with a free-text fallback",
+     wardAttempt.status === "NO_GEOGRAPHY_DATA_IMPORTED" && wardAttempt.draft === null);
+
+  const puAttempt = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "polling_unit", geographyRef: "any-pu-id" }, roster: ROSTER, geographyTree: GEOGRAPHY_TREE,
+  });
+  ok("C2. assigning at polling-unit level against an empty geography_polling_units fixture is REFUSED the same way",
+     puAttempt.status === "NO_GEOGRAPHY_DATA_IMPORTED");
+
+  // Once real rows exist for a level, the SAME code path accepts a real id —
+  // proving the refusal above is genuinely data-driven, not level-hardcoded.
+  const treeWithWards = { ...GEOGRAPHY_TREE, wards: [{ id: "ward-1", name: "Ward 1" }] };
+  const wardOk = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "ward", geographyRef: "ward-1" }, roster: ROSTER, geographyTree: treeWithWards,
+  });
+  ok("C3. once a real ward row exists, the identical operation is PREPARED — the refusal above was data-driven, not a hardcoded block",
+     wardOk.status === "PREPARED");
+}
+
+// ---------- status / training change ----------
+{
+  const client = fakeEventClient();
+  const assign = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "lga", geographyRef: LGA_OKPE }, roster: ROSTER, geographyTree: GEOGRAPHY_TREE,
+  });
+  await executeAssignResponsibility({ draft: assign.draft.draft, campaign: CAMPAIGN_A, userId: USER, client, confirmationId: "resp-status-1" });
+
+  const neither = await proposeChangeResponsibilityStatus({ fields: { responsibilityId: "resp-status-1" } });
+  ok("D1. a status change with neither status nor trainingStatus is refused (NEEDS_STATUS)", neither.status === "NEEDS_STATUS");
+
+  const trainingOnly = await proposeChangeResponsibilityStatus({ fields: { responsibilityId: "resp-status-1", trainingStatus: "COMPLETE" } });
+  ok("D2. a training-only update (no status change) is PREPARED", trainingOnly.status === "PREPARED" && trainingOnly.draft.draft.status === null);
+  await executeChangeResponsibilityStatus({ draft: trainingOnly.draft.draft, campaign: CAMPAIGN_A, userId: USER, client, confirmationId: "resp-status-1-training" });
+
+  const view = projectElection(logFor(client, CAMPAIGN_A), CAMPAIGN_A);
+  ok("D3. the fold shows trainingStatus updated while status/person/level/geographyRef stay untouched (never silently reassigned)",
+     view.responsibilities["resp-status-1"]?.trainingStatus === "COMPLETE" &&
+     view.responsibilities["resp-status-1"]?.status === "ASSIGNED" &&
+     view.responsibilities["resp-status-1"]?.geographyRef === LGA_OKPE &&
+     view.responsibilities["resp-status-1"]?.history.length === 1);
+}
+
+// ---------- territory readiness: a real percentage, never fabricated ----------
+{
+  const client = fakeEventClient();
+  const territoryEvent = { type: ELECTION_EVENT_TYPES.TERRITORY.SET, territory: "t-1", campaign: CAMPAIGN_A,
+    election: "2027 General Election", office: "house_of_reps", state: "delta", constituency: "constituency-osu", at: new Date().toISOString(), eventId: "t-1" };
+  await client.from("election_events").insert({ event_id: "t-1", campaign_id: CAMPAIGN_A, type: territoryEvent.type, actor: USER, schema_version: "1", payload: territoryEvent });
+
+  const assign = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "lga", geographyRef: LGA_OKPE }, roster: ROSTER, geographyTree: GEOGRAPHY_TREE,
+  });
+  await executeAssignResponsibility({ draft: assign.draft.draft, campaign: CAMPAIGN_A, userId: USER, client, confirmationId: "resp-ready-1" });
+
+  const view = projectElection(logFor(client, CAMPAIGN_A), CAMPAIGN_A);
+  const readiness = deriveTerritoryReadiness({ view, geographyTree: GEOGRAPHY_TREE });
+
+  ok("E1. lgaCoverage is a REAL percentage: 1 of 3 real LGAs assigned = 33%",
+     readiness.lgaCoverage.totalLgas === 3 && readiness.lgaCoverage.assigned === 1 && readiness.lgaCoverage.percent === 33);
+  ok("E2. wardCoverage renders NOT_ESTABLISHED — never a fabricated 0%/100% over zero imported wards",
+     readiness.wardCoverage.status === "NOT_ESTABLISHED");
+  ok("E3. pollingUnitCoverage renders NOT_ESTABLISHED the same way", readiness.pollingUnitCoverage.status === "NOT_ESTABLISHED");
+  ok("E4. the gap list names the 2 unassigned LGAs (Sapele, Uvwie) plus the missing constituency lead",
+     readiness.gaps.filter((g) => /Sapele|Uvwie/.test(g.what)).length === 2 &&
+     readiness.gaps.some((g) => /constituency has no lead/.test(g.what)));
+  ok("E5. every gap carries owner/deadline/dependency UNKNOWN, never a guessed value",
+     readiness.gaps.every((g) => g.owner === "UNKNOWN" && g.deadline === "UNKNOWN" && g.dependency === "UNKNOWN"));
+}
+
+// ---------- tenant isolation ----------
+{
+  const client = fakeEventClient();
+  const respA = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "lga", geographyRef: LGA_OKPE }, roster: ROSTER, geographyTree: GEOGRAPHY_TREE,
+  });
+  await executeAssignResponsibility({ draft: respA.draft.draft, campaign: CAMPAIGN_A, userId: USER, client, confirmationId: "resp-a" });
+
+  const respB = await proposeAssignResponsibility({
+    fields: { personId: "person-1", level: "lga", geographyRef: LGA_SAPELE }, roster: ROSTER, geographyTree: GEOGRAPHY_TREE,
+  });
+  await executeAssignResponsibility({ draft: respB.draft.draft, campaign: CAMPAIGN_B, userId: USER, client, confirmationId: "resp-b" });
+
+  const mixedLog = client.rows.filter((r) => r.table === "election_events").map((r) => r.payload);
+  const viewA = projectElection(mixedLog, CAMPAIGN_A);
+  const viewB = projectElection(mixedLog, CAMPAIGN_B);
+  ok("F1. campaign A's fold contains ONLY campaign A's responsibility",
+     Object.keys(viewA.responsibilities).length === 1 && viewA.responsibilities["resp-a"]?.geographyRef === LGA_OKPE);
+  ok("F2. campaign B's fold contains ONLY campaign B's responsibility, never A's",
+     Object.keys(viewB.responsibilities).length === 1 && viewB.responsibilities["resp-b"]?.geographyRef === LGA_SAPELE);
+}
+
+console.log(`\n${pass}/${pass + fail} assertions passed${fail ? ` — ${fail} FAILED` : ""}\n`);
+process.exit(fail ? 1 : 0);

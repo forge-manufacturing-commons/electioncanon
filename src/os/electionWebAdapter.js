@@ -36,6 +36,7 @@ import { proposeElectionWrite, executeElectionWrite } from "../domains/election/
 import { REQUIRED_ACTOR_KIND } from "../domains/election/events.js";
 import * as mobilizationWrite from "../domains/election/mobilization/write.js";
 import * as electionDayWrite from "../domains/election/electionDay/write.js";
+import * as geographyWrite from "../domains/election/geography/write.js";
 
 /**
  * The ONE place a Supabase session becomes a `userId`. Never guessed, never
@@ -247,6 +248,25 @@ const ELECTION_DAY_HANDLERS = Object.freeze({
   [ELECTION_DAY_OPERATION.CHANGE_INCIDENT_STATUS]: { propose: electionDayWrite.proposeChangeIncidentStatus, execute: electionDayWrite.executeChangeIncidentStatus },
 });
 
+// ELECTORAL GEOGRAPHY — same structured-write shape as Mobilization/Election
+// Day above. `offices`/`states`/`constituencies`/`geographyTree` are the
+// small reference-data lookups the UI already fetched via
+// domains/election/geography/read.js (public-read, no adapter wrapping
+// needed for reads themselves — see that module's own header); `roster` is
+// the existing Mobilization roster (view.people). All passed through the
+// SAME generic `extra`-bag prepareStructuredWrite() already supports.
+export const GEOGRAPHY_OPERATION = Object.freeze({
+  SET_TERRITORY: "set_territory",
+  ASSIGN_RESPONSIBILITY: "assign_responsibility",
+  CHANGE_RESPONSIBILITY_STATUS: "change_responsibility_status",
+});
+
+const GEOGRAPHY_HANDLERS = Object.freeze({
+  [GEOGRAPHY_OPERATION.SET_TERRITORY]: { propose: geographyWrite.proposeSetTerritory, execute: geographyWrite.executeSetTerritory },
+  [GEOGRAPHY_OPERATION.ASSIGN_RESPONSIBILITY]: { propose: geographyWrite.proposeAssignResponsibility, execute: geographyWrite.executeAssignResponsibility },
+  [GEOGRAPHY_OPERATION.CHANGE_RESPONSIBILITY_STATUS]: { propose: geographyWrite.proposeChangeResponsibilityStatus, execute: geographyWrite.executeChangeResponsibilityStatus },
+});
+
 async function prepareStructuredWrite({ client, requestedCampaign, fields, proposeFn, extra }) {
   const userId = await getAuthenticatedUserId({ client });
   if (!userId) return { status: WRITE_CHANNEL.UNAUTHENTICATED, draft: null, reason: "no authenticated session" };
@@ -319,9 +339,28 @@ export async function approveElectionDayWrite({ client, requestedCampaign, opera
   return approveStructuredWrite({ client, requestedCampaign, draft, confirmationId, executeFn: handler.execute });
 }
 
+export async function prepareGeographyWrite({ client, requestedCampaign, operation, fields, offices, states, constituencies, roster, geographyTree } = {}) {
+  const handler = GEOGRAPHY_HANDLERS[operation];
+  if (!handler) return { status: "NOT_UNDERSTOOD", draft: null, reason: `"${operation}" is not a recognised geography operation` };
+  const extra = {};
+  if (offices !== undefined) extra.offices = offices;
+  if (states !== undefined) extra.states = states;
+  if (constituencies !== undefined) extra.constituencies = constituencies;
+  if (roster !== undefined) extra.roster = roster;
+  if (geographyTree !== undefined) extra.geographyTree = geographyTree;
+  return prepareStructuredWrite({ client, requestedCampaign, fields, proposeFn: handler.propose, extra });
+}
+
+export async function approveGeographyWrite({ client, requestedCampaign, operation, draft, confirmationId } = {}) {
+  const handler = GEOGRAPHY_HANDLERS[operation];
+  if (!handler) return { success: false, alreadyRecorded: false, error: `"${operation}" is not a recognised geography operation` };
+  return approveStructuredWrite({ client, requestedCampaign, draft, confirmationId, executeFn: handler.execute });
+}
+
 export default {
   getAuthenticatedUserId, readElectionCanon, activateElection, readElectionLog,
   WRITE_CHANNEL, prepareElectionWrite, approveElectionWrite,
   MOBILIZATION_OPERATION, prepareMobilizationWrite, approveMobilizationWrite,
   ELECTION_DAY_OPERATION, prepareElectionDayWrite, approveElectionDayWrite,
+  GEOGRAPHY_OPERATION, prepareGeographyWrite, approveGeographyWrite,
 };
