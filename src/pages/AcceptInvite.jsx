@@ -29,6 +29,7 @@ export default function AcceptInvite() {
   const [invitation, setInvitation] = useState(undefined); // undefined = loading, null = not found
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [partialSuccess, setPartialSuccess] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +54,17 @@ export default function AcceptInvite() {
     setBusy(false);
     if (!accepted) { setError(acceptError); return; }
     try { sessionStorage.removeItem("electioncanon_pending_invite_token"); } catch { /* best effort */ }
+    if (acceptError) {
+      // Membership was created (accepted === true) but a later step -- the
+      // roster entry or the territory/responsibility assignment -- failed
+      // (e.g. someone else already holds that exact geography slot). This
+      // is recoverable, never a security concern, and must never be
+      // silently swallowed just because the primary membership grant
+      // succeeded -- see acceptInvitation()'s own header on this.
+      setError(acceptError);
+      setPartialSuccess(true);
+      return;
+    }
     navigate("/election?welcome=1");
   };
 
@@ -100,12 +112,23 @@ export default function AcceptInvite() {
                   Sign In
                 </button>
               </div>
+            ) : partialSuccess ? (
+              <button onClick={() => navigate("/election")}
+                style={{ marginTop: 20, fontFamily: UI, fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase",
+                  padding: "14px 24px", border: "none", background: TEAL, color: BLACK, cursor: "pointer" }}>
+                Continue to ElectionCanon →
+              </button>
             ) : (
               <button onClick={accept} disabled={busy}
                 style={{ marginTop: 20, fontFamily: UI, fontWeight: 700, fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase",
                   padding: "14px 24px", border: "none", background: busy ? BORDER : TEAL, color: BLACK, cursor: busy ? "not-allowed" : "pointer" }}>
                 {busy ? "Accepting…" : "Accept Invitation"}
               </button>
+            )}
+            {partialSuccess && (
+              <div style={{ fontFamily: UI, fontSize: 12.5, color: AMBER, marginTop: 14 }}>
+                You have joined the campaign, but your territory assignment could not be completed automatically. Contact your campaign owner to finish it.
+              </div>
             )}
             {error && <div style={{ fontFamily: UI, fontSize: 12.5, color: PINK, marginTop: 14 }}>{error}</div>}
           </div>
