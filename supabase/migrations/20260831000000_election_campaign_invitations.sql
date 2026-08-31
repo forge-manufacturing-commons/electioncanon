@@ -306,8 +306,12 @@ begin
     raise exception 'this invitation was sent to a different email address than your signed-in account';
   end if;
 
+  -- campaign_members.member_role is the enum campaign_member_role, not
+  -- text -- unlike ensure_campaign_owner()'s literal 'owner' (an untyped
+  -- literal Postgres resolves contextually), intended_member_role here is
+  -- a genuine text COLUMN value and needs an explicit cast.
   insert into public.campaign_members (campaign_id, person, member_role, status, invited_by)
-  values (v_inv.campaign_id, v_uid, v_inv.intended_member_role, 'active', v_inv.invited_by)
+  values (v_inv.campaign_id, v_uid, v_inv.intended_member_role::public.campaign_member_role, 'active', v_inv.invited_by)
   on conflict (campaign_id, person) do nothing;
 
   update public.campaign_invitations
