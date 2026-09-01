@@ -35,6 +35,23 @@ export const RESPONSIBILITY_ROLE_LABEL = Object.freeze({
   POLLING_UNIT_AGENT: "Polling-Unit Agent",
 });
 
+// MIRRORS src/pages/election/shared.jsx's parseCampaignTitle() EXACTLY —
+// same regex, same fallback behaviour. Not imported from there: Supabase
+// deploys this function's own directory only (index.ts/contract.mjs), so a
+// cross-directory import into src/ is not deployable. campaigns.name is
+// still stored as "[ElectionType] Name" (unchanged, no migration); this is
+// the SAME display-only split shared.jsx already does, duplicated here on
+// purpose and kept honest by test/election-first-user-completion.consumer.mjs's
+// parity assertion, which imports BOTH copies and fails if they ever
+// disagree on the same input.
+export function parseCampaignTitle(rawName) {
+  const text = String(rawName ?? "").trim();
+  const match = text.match(/^\[([^\]]+)\]\s*(.*)$/);
+  if (!match) return { name: text, electionType: null };
+  const [, electionType, rest] = match;
+  return { name: rest.trim() || text, electionType: electionType.trim() || null };
+}
+
 /** Validates the ONLY thing the client is trusted to say: which invitation to email. */
 export function validateSendRequest(body) {
   const id = body && typeof body === "object" ? body.invitation_id : undefined;
@@ -62,6 +79,12 @@ export function validateSendRequest(body) {
  *                       "copy invitation link" fallback in the UI produces.
  */
 export function buildInvitationEmail({ invitation, campaignName, geographyName, invitedByName, origin }) {
+  // campaigns.name is stored as "[ElectionType] Name" (unchanged, no
+  // migration — see parseCampaignTitle()'s own header above). The email
+  // must never render that raw bracket-prefixed string; the clean name and
+  // the election type are shown separately, exactly like the app's own
+  // display layer already does.
+  const { name: cleanCampaignName, electionType } = parseCampaignTitle(campaignName);
   const roleLabel = invitation.intended_responsibility_role
     ? RESPONSIBILITY_ROLE_LABEL[invitation.intended_responsibility_role] ?? invitation.intended_responsibility_role
     : "Campaign Director";
@@ -102,7 +125,7 @@ export function buildInvitationEmail({ invitation, campaignName, geographyName, 
 </head>
 <body style="margin:0; padding:0; background-color:#0D0D0F;">
   <div style="display:none; max-height:0; overflow:hidden; opacity:0;">
-    ${esc(inviterLabel)} has invited you to join ${esc(campaignName)} on ElectionCanon as ${esc(roleLabel)}${esc(territoryLine)}.
+    ${esc(inviterLabel)} has invited you to join ${esc(cleanCampaignName)} on ElectionCanon as ${esc(roleLabel)}${esc(territoryLine)}.
   </div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0D0D0F" style="background-color:#0D0D0F;">
     <tr><td align="center" style="padding: 32px 16px;">
@@ -128,15 +151,16 @@ export function buildInvitationEmail({ invitation, campaignName, geographyName, 
           </table>
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
             <tr><td style="padding: 32px 40px 8px 40px;">
-              <h1 style="margin:0 0 18px 0; font-family: Helvetica, Arial, sans-serif; font-weight: 800; font-size: 26px; line-height: 32px; color: #F5F1E9;">
-                You've been invited to join ${esc(campaignName)}
+              <h1 style="margin:0 0 6px 0; font-family: Helvetica, Arial, sans-serif; font-weight: 800; font-size: 26px; line-height: 32px; color: #F5F1E9;">
+                You've been invited to join ${esc(cleanCampaignName)}
               </h1>
+              ${electionType ? `<p style="margin:0 0 18px 0; font-family: Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #8899AA; text-transform: uppercase;">Election: ${esc(electionType)}</p>` : `<div style="margin-bottom:18px;"></div>`}
               <p style="margin: 0 0 10px 0; font-family: Helvetica, Arial, sans-serif; font-size: 15px; line-height: 24px; color: #C9CDD3;">
                 Hi ${esc(invitation.invited_name)},
               </p>
               <p style="margin: 0 0 16px 0; font-family: Helvetica, Arial, sans-serif; font-size: 15px; line-height: 24px; color: #C9CDD3;">
                 <strong style="color:#F5F1E9;">${esc(inviterLabel)}</strong> has invited you to join
-                <strong style="color:#F5F1E9;">${esc(campaignName)}</strong> on ElectionCanon as
+                <strong style="color:#F5F1E9;">${esc(cleanCampaignName)}</strong> on ElectionCanon as
                 <strong style="color:#0AB4A0;">${esc(roleLabel)}${esc(territoryLine)}</strong>. Accepting gives you your own
                 sign-in, scoped to exactly this responsibility and territory — not a generic account.
               </p>
@@ -194,7 +218,8 @@ export function buildInvitationEmail({ invitation, campaignName, geographyName, 
 </html>`;
 
   const text = `"If you fail to prepare, you are preparing to fail." — Archbishop Benson Idahosa\n\n`
-    + `${inviterLabel} has invited you to join ${campaignName} on ElectionCanon as ${roleLabel}${territoryLine}.\n\n`
+    + `${inviterLabel} has invited you to join ${cleanCampaignName} on ElectionCanon as ${roleLabel}${territoryLine}.\n`
+    + (electionType ? `Election: ${electionType}\n\n` : `\n`)
     + `Accepting will take you through ElectionCanon's own sign-in and registration — you'll confirm or create your account there before this invitation is applied to it.\n\n`
     + `Accept your invitation: ${link}\n\n`
     + (expiresText ? `This invitation expires ${expiresText}.\n\n` : "")
@@ -219,4 +244,4 @@ export function interpretResendResponse(status, body) {
   return { ok: false, providerMessageId: null, error: message };
 }
 
-export default { RESPONSIBILITY_ROLE_LABEL, validateSendRequest, buildInvitationEmail, buildResendRequest, interpretResendResponse };
+export default { RESPONSIBILITY_ROLE_LABEL, validateSendRequest, parseCampaignTitle, buildInvitationEmail, buildResendRequest, interpretResendResponse };

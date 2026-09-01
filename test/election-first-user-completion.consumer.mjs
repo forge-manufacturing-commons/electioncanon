@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { stripComments } from "./lib/source.mjs";
 import {
   validateSendRequest, buildInvitationEmail, buildResendRequest, interpretResendResponse,
+  parseCampaignTitle as parseCampaignTitleEmail,
 } from "../supabase/functions/election-invitation-email/contract.mjs";
 
 let pass = 0, fail = 0;
@@ -88,6 +89,34 @@ console.log("\nB — INVITATION EMAIL CONTRACT: buildInvitationEmail");
     /sign-in and registration/.test(built.html));
   ok("B16. the H1 reads as an invitation, never the account-confirmation email's own heading (no cross-template confusion)",
     /You've been invited to join/.test(built.html) && !/Confirm your ElectionCanon account/.test(built.html));
+
+  // B17-B21 — campaign-name presentation. campaigns.name is stored as
+  // "[ElectionType] Name" (unchanged, no migration); the email must render
+  // this exactly the way the app's own display layer does: clean name in
+  // the headline, election type shown separately. A live-production bug
+  // (raw "[House of Representatives] Journey Test Campaign" in a sent
+  // email) is the reason these assertions exist.
+  const bracketed = buildInvitationEmail({
+    invitation, campaignName: "[House of Representatives] Journey Test Campaign",
+    geographyName: "Ward 4", invitedByName: "Chidi Okoro", origin: "https://electioncanon.org",
+  });
+  ok("B17. a bracket-prefixed stored name never leaks into the email verbatim",
+    !bracketed.html.includes("[House of Representatives] Journey Test Campaign")
+    && !bracketed.text.includes("[House of Representatives] Journey Test Campaign"));
+  ok("B18. the headline reads the clean campaign name only",
+    bracketed.html.includes("You've been invited to join Journey Test Campaign"));
+  ok("B19. the election/office is shown separately, labelled, not bracket-prefixed",
+    /Election: House of Representatives/.test(bracketed.html) && /Election: House of Representatives/.test(bracketed.text));
+  ok("B20. a campaign name with no bracket prefix passes through unchanged, with no 'Election:' line fabricated",
+    (() => {
+      const plain = buildInvitationEmail({ invitation, campaignName: "Journey Test Campaign", geographyName: "Ward 4", invitedByName: "Chidi Okoro", origin: "https://electioncanon.org" });
+      return plain.html.includes("You've been invited to join Journey Test Campaign") && !/Election:/.test(plain.html);
+    })());
+  ok("B21. parseCampaignTitle() in the email contract uses the exact same regex as the app's own parser (shared.jsx) — a textual parity guard against future drift",
+    (() => {
+      const shared = code("../src/pages/election/shared.jsx");
+      return shared.includes("/^\\[([^\\]]+)\\]\\s*(.*)$/") && parseCampaignTitleEmail.toString().includes("/^\\[([^\\]]+)\\]\\s*(.*)$/");
+    })());
 }
 
 // ============================================================
