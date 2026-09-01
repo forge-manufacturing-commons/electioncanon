@@ -7,9 +7,13 @@
 // once, directly, by createInvitation()'s own RPC response.
 // ============================================================
 
+// PRE-LAUNCH UX CLEANUP PASS — `accepted_by` added so the Organisation
+// roster can resolve a Director-level invitee's display name (their
+// `invited_name`) instead of showing their raw auth id; see
+// OrganisationSection.jsx's nameFor(). Still never selects `token`.
 export async function listInvitations({ client, campaignId }) {
   return client.from("campaign_invitations")
-    .select("id, invited_name, invited_email, intended_member_role, intended_responsibility_role, intended_level, intended_geography_ref, status, created_at, expires_at, accepted_at, invited_by")
+    .select("id, invited_name, invited_email, intended_member_role, intended_responsibility_role, intended_level, intended_geography_ref, status, created_at, expires_at, accepted_at, accepted_by, invited_by")
     .eq("campaign_id", campaignId)
     .order("created_at", { ascending: false });
 }

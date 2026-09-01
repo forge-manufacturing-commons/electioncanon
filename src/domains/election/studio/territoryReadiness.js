@@ -91,11 +91,11 @@ export function deriveTerritoryReadiness({ view = {}, geographyTree = null } = {
   const wardCoverage = wards.length > 0
     ? { totalWards: wards.length, assigned: wards.filter((w) => wardAssignedIds.has(w.id)).length,
         percent: Math.round((wards.filter((w) => wardAssignedIds.has(w.id)).length / wards.length) * 100) }
-    : { status: "NOT_ESTABLISHED", note: "no ward reference geography imported for this constituency — see supabase/geography-import/README.md" };
+    : { status: "NOT_ESTABLISHED", note: "Authoritative ward reference data has not yet been imported for this constituency." };
 
   const pollingUnitCoverage = totalPollingUnits > 0
     ? { totalPollingUnits, assigned: puResps.length, percent: Math.round((puResps.length / totalPollingUnits) * 100) }
-    : { status: "NOT_ESTABLISHED", note: "no polling-unit reference geography imported — see supabase/geography-import/README.md" };
+    : { status: "NOT_ESTABLISHED", note: "Authoritative polling-unit reference data has not yet been imported." };
 
   // Training completion is only ever computed over responsibilities whose
   // LEVEL has real imported geography rows (today: constituency + lga) —

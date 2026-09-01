@@ -23,6 +23,16 @@
 // stored on `campaigns.actor_kind`, never on this shared `profiles` row
 // — this fixed value is invisible to a registrant and was invisible in
 // the original file too.
+//
+// PRE-LAUNCH UX CLEANUP PASS — the `displayName` field below feeds
+// `profiles.display_name` (a PERSON identity field, read back by
+// OrganisationSection.jsx's roster to resolve "who is this member" — see
+// that file's own header). It was previously labelled "Campaign /
+// organisation name", which a first-time user reasonably read as "the
+// name of my campaign" — a DIFFERENT thing, asked again moments later in
+// the post-auth Welcome screen's "Workspace name" field (which really is
+// `campaigns.name`). Relabelled to "Your name" so the two prompts read as
+// two different, real questions rather than the same one asked twice.
 // ============================================================
 
 import { useState } from "react";
@@ -47,7 +57,7 @@ const field = { width:"100%", background:BLACK, border:`1px solid ${BORDER}`, co
   fontFamily:UI, fontSize:14, padding:"12px 14px", clipPath:FORGE_CLIPS.buttonSm, outline:"none" };
 
 export default function Access() {
-  const { configured, register, signIn, session } = useIdentity();
+  const { configured, register, signIn, session, requestPasswordReset } = useIdentity();
   const navigate = useNavigate();
   const [mode, setMode] = useState("register");
   const [role] = useState("engineer");
@@ -72,6 +82,21 @@ export default function Access() {
     } else {
       navigate("/election");
     }
+  }
+
+  // PRE-LAUNCH UX CLEANUP PASS (P1-4) — self-service password reset, via
+  // Supabase Auth's own resetPasswordForEmail(). The same, single message
+  // is shown whether or not the address has an account — anything more
+  // specific would let this form be used to check which emails are
+  // registered, an account-enumeration leak this project does not accept
+  // anywhere else (see the invitation flow's own email-match discipline).
+  async function submitForgotPassword(e) {
+    e.preventDefault();
+    setBusy(true); setErr(null); setMsg(null);
+    const res = await requestPasswordReset({ email: form.email });
+    setBusy(false);
+    if (res?.error) { setErr(res.error); return; }
+    setMsg("If an ElectionCanon account exists for that email, a password reset link has been sent. Check your inbox.");
   }
 
   return (
@@ -123,6 +148,42 @@ export default function Access() {
           ))}
         </div>
 
+        {mode === "forgot" ? (
+          <div style={{ maxWidth: 420 }}>
+            <span style={label}>Reset your password</span>
+            <p style={{ fontFamily: UI, fontSize: 13, color: "rgba(245,241,233,0.75)", lineHeight: 1.6, margin: "0 0 18px" }}>
+              Enter the email address on your ElectionCanon account. We'll send a secure link to set a new password.
+            </p>
+            <form onSubmit={submitForgotPassword}>
+              <div style={{ display:"grid", gap:14 }}>
+                <label>
+                  <span style={label}>Email</span>
+                  <input style={field} type="email" value={form.email} onChange={set("email")} required />
+                </label>
+                {err && <div style={{ color:PINK, fontSize:12.5, fontFamily:UI }}>{err}</div>}
+                {msg && <div style={{ color:TEAL, fontSize:12.5, fontFamily:UI }}>{msg}</div>}
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button type="submit" disabled={busy || !configured}
+                    style={{ fontFamily:UI, fontWeight:700, fontSize:12.5, letterSpacing:"0.12em",
+                      textTransform:"uppercase", padding:"14px 26px", border:"none",
+                      clipPath:FORGE_CLIPS.button,
+                      background: (busy || !configured) ? BORDER : AMBER,
+                      color: (busy || !configured) ? MUTED : BLACK,
+                      cursor: (busy || !configured) ? "not-allowed" : "pointer" }}>
+                    {busy ? "Sending…" : "Send Reset Link →"}
+                  </button>
+                  <button type="button" onClick={() => { setMode("signin"); setErr(null); setMsg(null); }}
+                    style={{ fontFamily:UI, fontWeight:700, fontSize:11, letterSpacing:"0.12em",
+                      textTransform:"uppercase", padding:"14px 18px", cursor:"pointer",
+                      background:"transparent", color:MUTED, border:`1px solid ${BORDER}`,
+                      clipPath:FORGE_CLIPS.button }}>
+                    ← Back to sign in
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        ) : (
         <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))", gap:28 }}>
           {mode === "register" && (
             <div>
@@ -142,8 +203,12 @@ export default function Access() {
             <div style={{ display:"grid", gap:14, maxWidth:420 }}>
               {mode === "register" && (
                 <label>
-                  <span style={label}>Campaign / organisation name</span>
+                  <span style={label}>Your name</span>
                   <input style={field} value={form.displayName} onChange={set("displayName")} required />
+                  <div style={{ fontFamily: UI, fontSize: 11, color: MUTED, marginTop: 6, lineHeight: 1.5 }}>
+                    Your own name, or however you'd like to be identified. You'll name your campaign
+                    or organisation in the next step, after signing in.
+                  </div>
                 </label>
               )}
               <label>
@@ -154,6 +219,13 @@ export default function Access() {
                 <span style={label}>Password</span>
                 <input style={field} type="password" minLength={8} value={form.password}
                   onChange={set("password")} required />
+                {mode === "signin" && (
+                  <button type="button" onClick={() => { setMode("forgot"); setErr(null); setMsg(null); }}
+                    style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, color: TEAL, background: "transparent",
+                      border: "none", padding: 0, marginTop: 8, cursor: "pointer", textDecoration: "underline" }}>
+                    Forgot password?
+                  </button>
+                )}
               </label>
               {mode === "register" && (
                 <label>
@@ -189,6 +261,7 @@ export default function Access() {
             </div>
           </form>
         </div>
+        )}
       </div>
     </div>
   );

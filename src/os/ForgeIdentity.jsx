@@ -306,6 +306,35 @@ export function ForgeIdentityProvider({ children }) {
     return { error: e?.message ?? null };
   }, []);
 
+  // PRE-LAUNCH UX CLEANUP PASS (P1-4) — self-service password recovery.
+  // Uses Supabase Auth's own built-in mechanism exclusively: no custom
+  // password storage, no plaintext handling, no service-role credential.
+  // `resetPasswordForEmail` always resolves the same way whether or not the
+  // address has an account — Supabase itself does not distinguish, so
+  // ElectionCanon cannot either without introducing an account-enumeration
+  // leak. The email itself (sent by Supabase, not this app) carries the
+  // secure recovery link; clicking it lands on /reset-password with a
+  // short-lived recovery session supabase-js establishes automatically from
+  // the URL, which updatePassword() below then uses.
+  const requestPasswordReset = useCallback(async ({ email }) => {
+    if (!isConfigured) return { error: "Supabase is not configured in this environment." };
+    const clean = String(email ?? "").trim();
+    if (!clean) return { error: "An email address is required." };
+    const { error: e } = await supabase.auth.resetPasswordForEmail(clean, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+    return { error: e?.message ?? null };
+  }, []);
+
+  // Only valid within the short-lived recovery session created by clicking
+  // the emailed link — supabase-js rejects this otherwise, so there is no
+  // separate authorization check to get wrong here.
+  const updatePassword = useCallback(async ({ password }) => {
+    if (!isConfigured) return { error: "Supabase is not configured in this environment." };
+    const { error: e } = await supabase.auth.updateUser({ password });
+    return { error: e?.message ?? null };
+  }, []);
+
   const signOut = useCallback(async () => {
     if (!isConfigured) return;
     await supabase.auth.signOut();
@@ -354,9 +383,11 @@ export function ForgeIdentityProvider({ children }) {
     notifications,
     unreadCount: notifications.filter((n) => !n.read_at).length,
     register, signIn, signOut, markRead, record, ensureOrganisation,
+    requestPasswordReset, updatePassword,
     refresh: () => { loadProfile(); loadOrganisation(); loadNotifications(); },
   }), [loading, error, session, profile, organisation, verified, granted, can, notifications,
        register, signIn, signOut, markRead, record, ensureOrganisation,
+       requestPasswordReset, updatePassword,
        loadProfile, loadOrganisation, loadNotifications]);
 
   return <IdentityContext.Provider value={value}>{children}</IdentityContext.Provider>;

@@ -181,7 +181,7 @@ function InviteWizard({ campaignId, refresh, territory, myRole, myResponsibility
                 <div style={{ fontFamily: UI, fontSize: 12, color: MUTED, marginBottom: 9 }}>Select an LGA first.</div>
               ) : wards.length === 0 ? (
                 <div style={{ fontFamily: UI, fontSize: 12, color: MUTED, marginBottom: 9 }}>
-                  No wards imported yet for this LGA — see supabase/geography-import/README.md.
+                  Territory data will appear here when the authoritative reference data for this LGA is available.
                 </div>
               ) : (
                 <select value={wardId} onChange={(e) => setWardId(e.target.value)} aria-label="Ward" style={inputStyle}>
@@ -242,10 +242,22 @@ export default function OrganisationSection({ ctx, campaignId, refresh }) {
   const [invitations, setInvitations] = useState([]);
   const [userId, setUserId] = useState(null);
   const [members, setMembers] = useState([]);
+  // PRE-LAUNCH UX CLEANUP PASS — the signed-in viewer's OWN identity, for
+  // nameFor() below. Never a raw id: falls back through profile display
+  // name, then the account's own email, matching profileResolver.js's own
+  // PROFILE_COLUMNS convention (the same self-profile read every other
+  // identity surface in this app already uses).
+  const [myIdentity, setMyIdentity] = useState(null);
 
   const loadAll = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     setUserId(user?.id ?? null);
+    if (user) {
+      const { data: profileRow } = await supabase.from("profiles").select("display_name").eq("id", user.id).maybeSingle();
+      setMyIdentity({ email: user.email ?? null, displayName: profileRow?.display_name ?? null });
+    } else {
+      setMyIdentity(null);
+    }
     const { data: invData } = await listInvitations({ client: supabase, campaignId });
     setInvitations(invData ?? []);
     const { data: memberData } = await supabase.from("campaign_members").select("person, member_role, status").eq("campaign_id", campaignId).eq("status", "active");
@@ -267,7 +279,23 @@ export default function OrganisationSection({ ctx, campaignId, refresh }) {
   };
 
   const people = Object.values(view.people ?? {});
-  const nameFor = (uid) => people.find((p) => p.id === `invite:${campaignId}:${uid}`)?.name ?? `member ${uid.slice(0, 8)}`;
+  // PRE-LAUNCH UX CLEANUP PASS — never a raw uid fragment. A coordinator
+  // invited through Organisation always has a real roster name (unchanged,
+  // first branch). The signed-in viewer's OWN row (owner or a Director
+  // invite, which carries no roster entry — see acceptInvitation()'s own
+  // header on why) resolves through their own profile/email. Any other
+  // Director-level member without a roster entry resolves through the
+  // invitation that admitted them (`accepted_by`), which already carries
+  // the name their inviter gave them. Only true unknowns fall back to a
+  // plain, honest label — never an id.
+  const nameFor = (uid) => {
+    const invited = people.find((p) => p.id === `invite:${campaignId}:${uid}`)?.name;
+    if (invited) return invited;
+    if (uid === userId && myIdentity) return myIdentity.displayName?.trim() || myIdentity.email || "You";
+    const acceptedInvite = invitations.find((i) => i.accepted_by === uid && i.status === "accepted");
+    if (acceptedInvite?.invited_name) return acceptedInvite.invited_name;
+    return "Campaign member";
+  };
   const roleFor = (uid) => {
     const resp = Object.values(view.responsibilities ?? {}).find((r) => r.person === `invite:${campaignId}:${uid}`);
     return resp ? RESPONSIBILITY_ROLE_LABEL[resp.responsibilityRole] : (members.find((m) => m.person === uid)?.member_role === "owner" ? "Campaign Owner" : members.find((m) => m.person === uid)?.member_role === "manager" ? "Campaign Director" : "Team member");

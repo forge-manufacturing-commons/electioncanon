@@ -51,6 +51,25 @@ export const CAPABILITIES_COMING_NEXT = Object.freeze([
   "Ward/polling-unit geography for constituencies beyond the current verified slice",
 ]);
 
+// PRE-LAUNCH UX CLEANUP PASS (P3) — WelcomeOnboarding's setup step (in
+// Election.jsx) stores the election type as a "[ElectionType] " prefix on
+// `campaigns.name` itself, since ElectionCanon does not yet track election
+// level as its own Canon fact (see that file's own comment). The STORED
+// value is unchanged by this fix — no migration, same bytes, same
+// semantics — this only splits the two pieces apart again for DISPLAY, so
+// "[House of Representatives] Journey Test Campaign" reads as a clean
+// campaign name with its election type available separately, not as one
+// mechanical bracketed string. A name with no bracket prefix (every
+// campaign created before this pass, or one where electionType was left
+// blank) returns electionType: null and is returned completely unchanged.
+export function parseCampaignTitle(rawName) {
+  const text = String(rawName ?? "").trim();
+  const match = text.match(/^\[([^\]]+)\]\s*(.*)$/);
+  if (!match) return { name: text, electionType: null };
+  const [, electionType, rest] = match;
+  return { name: rest.trim() || text, electionType: electionType.trim() || null };
+}
+
 export const SECTIONS = Object.freeze([
   { id: "home", label: "Home" },
   { id: "territory", label: "Territory" },

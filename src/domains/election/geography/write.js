@@ -27,8 +27,13 @@ import {
 } from "../events.js";
 import { ASSIGNMENT_STATUS } from "../mobilization/write.js";
 
+// PRE-LAUNCH UX CLEANUP PASS — was "ForgeOS requires an authenticated,
+// authorised campaign identity..." — internal system/architecture language
+// with no meaning to a campaign user. This notice is shown verbatim on the
+// Territory approval screen (StructuredWritePanel in shared.jsx), which a
+// first-time user reaches on their very first real action in the product.
 const NOT_AUTHORISED_NOTICE =
-  "NOT RECORDED · NOT AUTHORISED — ForgeOS requires an authenticated, authorised campaign identity before this can be recorded.";
+  "NOT RECORDED · NOT AUTHORISED — ElectionCanon requires you to be signed in and authorised to make this change.";
 export const MAX_FIELD_LENGTH = 200;
 
 function requireText(raw, label) {
@@ -156,7 +161,7 @@ export async function proposeAssignResponsibility({ fields = {}, roster = [], ge
     if (!pool || pool.length === 0) {
       return {
         status: "NO_GEOGRAPHY_DATA_IMPORTED", draft: null,
-        reason: `no ${level === GEOGRAPHY_LEVEL.WARD ? "ward" : "polling-unit"} geography has been imported yet for this constituency — see supabase/geography-import/README.md`,
+        reason: `Authoritative ${level === GEOGRAPHY_LEVEL.WARD ? "ward" : "polling-unit"} reference data has not yet been imported for this constituency.`,
       };
     }
     if (!pool.some((row) => row.id === geographyRef.value)) {

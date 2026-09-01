@@ -262,13 +262,16 @@ console.log("\nO — ROUTING: additive, existing routes untouched");
   // re-expressed here for what this repository actually is.
   //
   // CAMPAIGN ONBOARDING PASS — /invite/:token is a FOURTH explicit route
-  // (AcceptInvite.jsx), added the same additive, named way /election and
-  // /access already were. The count grows to 4; the "nothing generated
+  // (AcceptInvite.jsx), then /reset-password (ResetPassword.jsx, pre-launch
+  // UX cleanup pass P1-4), added the same additive, named way /election and
+  // /access already were. The count grows to 5; the "nothing generated
   // from a loop" invariant is exactly as true as before.
-  ok("O2. the route table is exactly four explicit routes (/, /election, /access, /invite/:token) — nothing generated from a loop",
-     !/\.map\(/.test(app) && (app.match(/<Route path=/g) ?? []).length === 4);
+  ok("O2. the route table is exactly five explicit routes (/, /election, /access, /invite/:token, /reset-password) — nothing generated from a loop",
+     !/\.map\(/.test(app) && (app.match(/<Route path=/g) ?? []).length === 5);
   ok("O3. /access is present, registered the same explicit way as /election",
      /<Route path="\/access"\s+element=\{<Access \/>\}\s*\/>/.test(app));
+  ok("O5. /reset-password is present, registered the same explicit way",
+     /<Route path="\/reset-password"\s+element=\{<ResetPassword \/>\}\s*\/>/.test(app));
   ok("O4. /invite/:token is present, registered the same explicit way",
      /<Route path="\/invite\/:token"\s+element=\{<AcceptInvite \/>\}\s*\/>/.test(app));
 }

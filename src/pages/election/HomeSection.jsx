@@ -107,7 +107,7 @@ function MyScopeCard({ campaignId, userId, responsibility, onOpenChat }) {
   );
 }
 
-export default function HomeSection({ ctx, onSection, workspaceName }) {
+export default function HomeSection({ ctx, onSection, workspaceName, electionType }) {
   const [commsSummary, setCommsSummary] = useState(null);
   const [studioSummary, setStudioSummary] = useState(null);
   const [myUserId, setMyUserId] = useState(null);
@@ -184,9 +184,14 @@ export default function HomeSection({ ctx, onSection, workspaceName }) {
           <div style={{ fontFamily: DISPLAY, fontWeight: 900, fontSize: "clamp(20px,2.6vw,28px)", color: IVORY, marginBottom: 6 }}>
             {workspaceName || "Your election workspace"}
           </div>
-          <div style={{ fontFamily: UI, fontSize: 12, color: MUTED, marginBottom: 16 }}>
+          <div style={{ fontFamily: UI, fontSize: 12, color: MUTED, marginBottom: electionType ? 4 : 16 }}>
             {ctx?.actorKind === ACTOR_KIND.OBSERVER_ORGANISATION ? "Observer / monitoring organisation" : "Candidate campaign"} · operating status: active
           </div>
+          {electionType && (
+            <div style={{ fontFamily: UI, fontSize: 12, color: TEAL, marginBottom: 16 }}>
+              Election: {electionType}
+            </div>
+          )}
           {nextAction ? (
             <>
               <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 10, letterSpacing: "0.14em",

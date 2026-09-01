@@ -133,7 +133,7 @@ function TerritoryWizard({ campaignId, refresh, offices, states }) {
   );
 }
 
-export default function TerritorySection({ ctx, campaignId, refresh }) {
+export default function TerritorySection({ ctx, campaignId, refresh, onSection }) {
   const [offices, setOffices] = useState([]);
   const [states, setStates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -159,6 +159,6 @@ export default function TerritorySection({ ctx, campaignId, refresh }) {
   }
 
   return territory
-    ? <TerritoryExplorer ctx={ctx} campaignId={campaignId} refresh={refresh} territory={territory} offices={offices} states={states} />
+    ? <TerritoryExplorer ctx={ctx} campaignId={campaignId} refresh={refresh} territory={territory} offices={offices} states={states} onSection={onSection} />
     : <TerritoryWizard campaignId={campaignId} refresh={refresh} offices={offices} states={states} />;
 }

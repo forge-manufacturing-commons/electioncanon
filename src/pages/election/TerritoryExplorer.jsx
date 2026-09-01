@@ -38,25 +38,46 @@ function PercentBar({ assigned, total, percent, note }) {
   );
 }
 
-function AssignPanel({ title, level, geographyRef, roster, geographyTree, campaignId, refresh, accent = TEAL }) {
+// PRE-LAUNCH UX CLEANUP PASS — this panel assigns responsibility to someone
+// ALREADY on the Mobilize roster (a person with no ElectionCanon account of
+// their own) — a genuinely different, still-necessary case from
+// Organisation's invite flow (which creates a real, logged-in coordinator).
+// Both write through the same proposeAssignResponsibility()/Canon event;
+// this is one capability with two entry points, not a second model. The
+// note below makes that distinction explicit rather than leaving a user to
+// guess which path to use.
+function AssignPanel({ title, level, geographyRef, roster, geographyTree, campaignId, refresh, accent = TEAL, onSection }) {
   return (
-    <StructuredWritePanel
-      title={title} operation={GEOGRAPHY_OPERATION.ASSIGN_RESPONSIBILITY}
-      prepareFn={prepareGeographyWrite} approveFn={approveGeographyWrite}
-      campaignId={campaignId} refresh={refresh} accent={accent}
-      extraArgs={{ roster, geographyTree }}
-      fields={[
-        { id: "personId", label: "Person", type: "select", options: roster.length
-          ? roster.map((p) => ({ value: p.id, label: p.name }))
-          : [{ value: "", label: "Add someone under Mobilize first" }] },
-        { id: "level", label: "Level", type: "select", options: [{ value: level, label: level.replace(/_/g, " ") }] },
-        { id: "geographyRef", label: "Location", type: "select", options: [{ value: geographyRef.value, label: geographyRef.label }] },
-      ]}
-    />
+    <div>
+      <div style={{ fontFamily: UI, fontSize: 11, color: MUTED, marginBottom: 8, lineHeight: 1.5 }}>
+        This assigns someone already on your roster, without giving them their own sign-in. To invite
+        a coordinator who signs in and manages their own territory,{" "}
+        {onSection ? (
+          <button type="button" onClick={() => onSection("organisation")}
+            style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, color: TEAL, background: "transparent",
+              border: "none", padding: 0, cursor: "pointer", textDecoration: "underline" }}>
+            use Organisation →
+          </button>
+        ) : "use the Organisation tab."}
+      </div>
+      <StructuredWritePanel
+        title={title} operation={GEOGRAPHY_OPERATION.ASSIGN_RESPONSIBILITY}
+        prepareFn={prepareGeographyWrite} approveFn={approveGeographyWrite}
+        campaignId={campaignId} refresh={refresh} accent={accent}
+        extraArgs={{ roster, geographyTree }}
+        fields={[
+          { id: "personId", label: "Person", type: "select", options: roster.length
+            ? roster.map((p) => ({ value: p.id, label: p.name }))
+            : [{ value: "", label: "Add someone under Mobilize first" }] },
+          { id: "level", label: "Level", type: "select", options: [{ value: level, label: level.replace(/_/g, " ") }] },
+          { id: "geographyRef", label: "Location", type: "select", options: [{ value: geographyRef.value, label: geographyRef.label }] },
+        ]}
+      />
+    </div>
   );
 }
 
-export default function TerritoryExplorer({ ctx, campaignId, refresh, territory, offices, states }) {
+export default function TerritoryExplorer({ ctx, campaignId, refresh, territory, offices, states, onSection }) {
   const [tree, setTree] = useState(null);
   const [loading, setLoading] = useState(Boolean(territory.constituency));
   const [expandedLga, setExpandedLga] = useState(null);
@@ -152,7 +173,7 @@ export default function TerritoryExplorer({ ctx, campaignId, refresh, territory,
         <div style={{ marginTop: 18 }}>
           <AssignPanel title="Assign Constituency Lead" level={GEOGRAPHY_LEVEL.CONSTITUENCY}
             geographyRef={{ value: territory.constituency, label: tree.constituency.name }}
-            roster={roster} geographyTree={tree} campaignId={campaignId} refresh={refresh} />
+            roster={roster} geographyTree={tree} campaignId={campaignId} refresh={refresh} onSection={onSection} />
         </div>
       )}
 
@@ -184,12 +205,12 @@ export default function TerritoryExplorer({ ctx, campaignId, refresh, territory,
                       <div style={{ marginBottom: 14 }}>
                         <AssignPanel title={`Assign ${lga.name} LGA Coordinator`} level={GEOGRAPHY_LEVEL.LGA}
                           geographyRef={{ value: lga.id, label: lga.name }} accent={AMBER}
-                          roster={roster} geographyTree={tree} campaignId={campaignId} refresh={refresh} />
+                          roster={roster} geographyTree={tree} campaignId={campaignId} refresh={refresh} onSection={onSection} />
                       </div>
                     )}
                     {wardsForLga.length === 0 ? (
                       <div style={{ fontFamily: UI, fontSize: 11.5, color: MUTED }}>
-                        No wards imported yet for {lga.name} — see supabase/geography-import/README.md.
+                        Territory data will appear here when the authoritative reference data for {lga.name} is available.
                       </div>
                     ) : (
                       wardsForLga.map((ward) => {

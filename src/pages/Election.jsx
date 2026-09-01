@@ -46,7 +46,7 @@ import { READINESS_DIMENSION_STATUS as STATUS } from "../domains/election/studio
 import {
   ForgeHeader, WriteActionPanel, Label, Panel, ClaimRow, GapRow, NotStartedRow,
   friendlyError, UI, DISPLAY, BLACK, IVORY, TEAL, AMBER, PINK, MUTED, BORDER,
-  CAPABILITIES_AVAILABLE_NOW, CAPABILITIES_COMING_NEXT,
+  CAPABILITIES_AVAILABLE_NOW, CAPABILITIES_COMING_NEXT, parseCampaignTitle,
 } from "./election/shared.jsx";
 import HomeSection from "./election/HomeSection.jsx";
 import TerritorySection from "./election/TerritorySection.jsx";
@@ -86,6 +86,20 @@ const ELECTION_TYPES = Object.freeze([
   "Presidential", "Senatorial", "House of Representatives", "Governorship", "State House of Assembly",
 ]);
 
+// PRE-LAUNCH UX CLEANUP PASS (P2-5) — the primary "what do I do now"
+// answer on a first-time user's very first screen, ahead of the full
+// capability list. Mirrors the real product journey (Territory ->
+// Organisation -> Responsibility -> Readiness -> Coordination) already
+// live-verified end to end.
+const WHAT_YOU_DO_NOW = Object.freeze([
+  "Set up your campaign.",
+  "Map your territory.",
+  "Build your organisation.",
+  "Assign responsibility.",
+  "Track readiness.",
+  "Coordinate.",
+]);
+
 
 function ChoiceButton({ active, onClick, children }) {
   return (
@@ -121,35 +135,56 @@ function WelcomeOnboarding({ onActivate, busy, error }) {
             letterSpacing: "-0.03em", lineHeight: 1.15, margin: "0 0 14px", color: IVORY }}>
             ElectionCanon
           </h1>
-          <p style={{ fontFamily: UI, fontSize: 13.5, color: MUTED, lineHeight: 1.7, marginBottom: 20 }}>
+          <p style={{ fontFamily: UI, fontSize: 13.5, color: MUTED, lineHeight: 1.7, marginBottom: 22 }}>
             ElectionCanon is an operating system for preparing, coordinating and safeguarding
-            democratic elections — candidate readiness, mobilizing your people, coordinating
-            through chat, producing campaign materials, and a simulated election day with
-            result capture and incident reporting.
+            democratic elections. Here's what you'll do:
           </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
-            gap: 14, marginBottom: 22 }}>
-            <div>
-              <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 10, letterSpacing: "0.14em",
-                textTransform: "uppercase", color: TEAL, marginBottom: 8 }}>Available now</div>
-              <ul style={{ margin: 0, paddingLeft: 18, fontFamily: UI, fontSize: 12.5, color: IVORY, lineHeight: 1.9 }}>
-                {CAPABILITIES_AVAILABLE_NOW.map((c) => <li key={c}>{c}</li>)}
-              </ul>
-            </div>
-            <div>
-              <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 10, letterSpacing: "0.14em",
-                textTransform: "uppercase", color: AMBER, marginBottom: 8 }}>Coming next</div>
-              <ul style={{ margin: 0, paddingLeft: 18, fontFamily: UI, fontSize: 12.5, color: MUTED, lineHeight: 1.9 }}>
-                {CAPABILITIES_COMING_NEXT.map((c) => <li key={c}>{c}</li>)}
-              </ul>
-            </div>
-          </div>
+          <ol style={{ margin: "0 0 26px", padding: 0, listStyle: "none", display: "grid", gap: 10 }}>
+            {WHAT_YOU_DO_NOW.map((step, i) => (
+              <li key={step} style={{ display: "flex", gap: 12, alignItems: "baseline" }}>
+                <span style={{ fontFamily: DISPLAY, fontWeight: 900, fontSize: 14, color: TEAL, width: 20, flexShrink: 0 }}>
+                  {i + 1}
+                </span>
+                <span style={{ fontFamily: UI, fontSize: 13.5, color: IVORY }}>{step}</span>
+              </li>
+            ))}
+          </ol>
           <button onClick={() => setStep("setup")}
             style={{ fontFamily: UI, fontWeight: 700, fontSize: 12, letterSpacing: "0.12em",
               textTransform: "uppercase", padding: "13px 24px", border: "none",
               background: AMBER, color: BLACK, cursor: "pointer", clipPath: FORGE_CLIPS.button }}>
             Get Started →
           </button>
+
+          {/* PRE-LAUNCH UX CLEANUP PASS (P2-5) — the full capability list
+              moved below the primary CTA, out of the critical path a
+              first-time user has to scroll past before they can start.
+              Still reads from the SAME single source of truth
+              (shared.jsx's CAPABILITIES_AVAILABLE_NOW/COMING_NEXT) — no
+              duplicated list, nothing deleted, just de-prioritised. */}
+          <details style={{ marginTop: 28 }}>
+            <summary style={{ fontFamily: UI, fontWeight: 700, fontSize: 10.5, letterSpacing: "0.14em",
+              textTransform: "uppercase", color: MUTED, cursor: "pointer" }}>
+              What's already built, and what's next
+            </summary>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))",
+              gap: 14, marginTop: 16 }}>
+              <div>
+                <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 10, letterSpacing: "0.14em",
+                  textTransform: "uppercase", color: TEAL, marginBottom: 8 }}>Available now</div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontFamily: UI, fontSize: 12.5, color: IVORY, lineHeight: 1.9 }}>
+                  {CAPABILITIES_AVAILABLE_NOW.map((c) => <li key={c}>{c}</li>)}
+                </ul>
+              </div>
+              <div>
+                <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 10, letterSpacing: "0.14em",
+                  textTransform: "uppercase", color: AMBER, marginBottom: 8 }}>Coming next</div>
+                <ul style={{ margin: 0, paddingLeft: 18, fontFamily: UI, fontSize: 12.5, color: MUTED, lineHeight: 1.9 }}>
+                  {CAPABILITIES_COMING_NEXT.map((c) => <li key={c}>{c}</li>)}
+                </ul>
+              </div>
+            </div>
+          </details>
         </Panel>
       </div>
     );
@@ -419,6 +454,12 @@ export default function Election() {
   const [activateError, setActivateError] = useState(null);
   const [section, setSection] = useState("home");
   const [workspaceName, setWorkspaceName] = useState(null);
+  // PRE-LAUNCH UX CLEANUP PASS (P3) — the election type embedded in
+  // campaigns.name's "[ElectionType] " prefix (see parseCampaignTitle()'s
+  // own header in shared.jsx), split out once here so every existing
+  // consumer of `workspaceName` (ForgeHeader, Settings, Campaign Studio)
+  // keeps receiving a clean campaign name with zero changes on their side.
+  const [workspaceElectionType, setWorkspaceElectionType] = useState(null);
 
   useEffect(() => { normalizeUrl(); }, []);
 
@@ -450,9 +491,12 @@ export default function Election() {
     if (result?.scope?.campaignId) {
       const { data } = await supabase.from("campaigns").select("name")
         .eq("id", result.scope.campaignId).maybeSingle();
-      setWorkspaceName(data?.name ?? null);
+      const { name, electionType } = parseCampaignTitle(data?.name ?? null);
+      setWorkspaceName(data?.name ? name : null);
+      setWorkspaceElectionType(electionType);
     } else {
       setWorkspaceName(null);
+      setWorkspaceElectionType(null);
     }
     setCtxLoading(false);
   }, [session?.user]);
@@ -576,8 +620,8 @@ export default function Election() {
               </button>
             </Panel>
           )}
-          {section === "home" && <HomeSection ctx={ctx} onSection={setSection} workspaceName={workspaceName} />}
-          {section === "territory" && <TerritorySection ctx={ctx} campaignId={campaignId} refresh={refresh} />}
+          {section === "home" && <HomeSection ctx={ctx} onSection={setSection} workspaceName={workspaceName} electionType={workspaceElectionType} />}
+          {section === "territory" && <TerritorySection ctx={ctx} campaignId={campaignId} refresh={refresh} onSection={setSection} />}
           {section === "organisation" && <OrganisationSection ctx={ctx} campaignId={campaignId} refresh={refresh} />}
           {section === "readiness" && <ReadinessSection ctx={ctx} campaignId={campaignId} refresh={refresh} />}
           {section === "mobilize" && <MobilizeSection ctx={ctx} campaignId={campaignId} refresh={refresh} />}
