@@ -349,7 +349,38 @@ specifically. Every other one of the 774 LGAs, 8,809 other wards, and
 176,846 polling units shows zero duplicate ids, zero orphans, and zero
 malformed identifiers.
 
-**Running the national acquisition + report yourself:**
+## Production import (State → LGA → Ward → Polling Unit only)
+
+`import-national-geography.mjs` — the runner. Reads the local snapshot,
+resolves INEC ids to real database ids level by level (LGA → Ward → PU),
+and either PRINTS the resulting plan (dry run, the default) or EXECUTES
+it (`DRY_RUN=false`, explicit). Every write is `.upsert(..., {onConflict,
+ignoreDuplicates:true})` against the same real unique constraints the
+original migration defined — idempotent by construction, never a
+duplicate, never an update/delete of an existing row. Never touches
+`geography_constituencies`/`geography_constituency_lgas` — constituency
+delimitation stays out of scope (see below).
+
+**The Benue/GWER EAST/MBAIKYAAN duplicate ward (INEC id 8810, empty, see
+the pre-import qualification pass above) is quarantined** —
+`quarantine.mjs` lists it explicitly, with a reason; `import-plan.mjs`'s
+`planWardImport()` excludes it from every plan before insert/existing
+classification even runs. The real, populated ward (id 1462) imports
+normally. Quarantining is a recorded human decision, not something the
+importer infers — extending the list requires editing `quarantine.mjs`
+directly.
+
+```sh
+# Dry run first — always, no writes performed:
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... \
+  node supabase/geography-import/import-national-geography.mjs
+
+# Only after reviewing the dry-run output:
+SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... DRY_RUN=false \
+  node supabase/geography-import/import-national-geography.mjs
+```
+
+## Running the national acquisition + report yourself:
 ```sh
 node supabase/geography-import/acquire-national-snapshot.mjs   # read-only, resumable, polite pacing
 node supabase/geography-import/national-integrity-report.mjs   # analyzes the resulting local snapshot
