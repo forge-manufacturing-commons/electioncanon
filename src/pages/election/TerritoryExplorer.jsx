@@ -15,7 +15,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase.js";
-import { getConstituencyTerritory, listPollingUnitsForWard } from "../../domains/election/geography/read.js";
+import { getConstituencyTerritory, getStateTerritory, listPollingUnitsForWard } from "../../domains/election/geography/read.js";
 import { prepareGeographyWrite, approveGeographyWrite, GEOGRAPHY_OPERATION } from "../../os/electionWebAdapter.js";
 import { GEOGRAPHY_LEVEL } from "../../domains/election/geography/write.js";
 import { deriveTerritoryReadiness } from "../../domains/election/studio/territoryReadiness.js";
@@ -78,8 +78,20 @@ function AssignPanel({ title, level, geographyRef, roster, geographyTree, campai
 }
 
 export default function TerritoryExplorer({ ctx, campaignId, refresh, territory, offices, states, onSection }) {
+  const office = offices.find((o) => o.id === territory.office) ?? null;
+  const state = states.find((s) => s.code === territory.state) ?? null;
+  // NATIONAL GEOGRAPHY PASS — a state/national-boundary office (Governor,
+  // President) has no constituency at all (proposeSetTerritory() never asks
+  // for one — see geography/write.js), so its territory resolves LGAs
+  // directly by state via getStateTerritory() instead of refusing outright.
+  // Every OTHER declared boundary_level (senatorial_district,
+  // federal_constituency, state_constituency) always carries a real
+  // territory.constituency, so this is the only other resolvable shape.
+  const isStateLevel = office?.boundary_level === "state" || office?.boundary_level === "national";
+  const hasResolvableTerritory = Boolean(territory.constituency) || isStateLevel;
+
   const [tree, setTree] = useState(null);
-  const [loading, setLoading] = useState(Boolean(territory.constituency));
+  const [loading, setLoading] = useState(hasResolvableTerritory);
   const [expandedLga, setExpandedLga] = useState(null);
   // Ward -> polling units is the LAZY step (see read.js's getConstituencyTerritory
   // header) — a ward's own PUs are fetched only when that ward is expanded,
@@ -99,33 +111,31 @@ export default function TerritoryExplorer({ ctx, campaignId, refresh, territory,
   };
 
   useEffect(() => {
-    if (!territory.constituency) { setTree(null); setLoading(false); return undefined; }
+    if (!hasResolvableTerritory) { setTree(null); setLoading(false); return undefined; }
     let cancelled = false;
     setLoading(true);
     (async () => {
-      const { data } = await getConstituencyTerritory({ client: supabase, constituencyId: territory.constituency });
+      const { data } = territory.constituency
+        ? await getConstituencyTerritory({ client: supabase, constituencyId: territory.constituency })
+        : await getStateTerritory({ client: supabase, stateCode: territory.state });
       if (!cancelled) { setTree(data); setLoading(false); }
     })();
     return () => { cancelled = true; };
-  }, [territory.constituency]);
+  }, [territory.constituency, territory.state, hasResolvableTerritory]);
 
-  const office = offices.find((o) => o.id === territory.office) ?? null;
-  const state = states.find((s) => s.code === territory.state) ?? null;
   const roster = Object.values(ctx.view?.people ?? {});
   const responsibilities = Object.values(ctx.view?.responsibilities ?? {});
   const personFor = (id) => roster.find((p) => p.id === id)?.name ?? "an unrostered person";
   const responsibilityFor = (level, geographyRef) =>
     responsibilities.find((r) => r.level === level && r.geographyRef === geographyRef) ?? null;
 
-  if (!territory.constituency) {
+  if (!hasResolvableTerritory) {
     return (
       <div>
         <Label>{office?.name ?? territory.office} · {state?.name ?? territory.state}</Label>
         <Panel>
           <div style={{ fontFamily: UI, fontSize: 13, color: IVORY, lineHeight: 1.6 }}>
-            {office?.name ?? "This office"} resolves directly to {state?.name ?? "a state"} — there is
-            no constituency-level territory to explore. LGA/ward/polling-unit drill-down is built for
-            constituency-bound offices (House of Representatives, Senate, State House of Assembly) in this pass.
+            ElectionCanon could not resolve a territory to explore for {office?.name ?? "this office"}.
           </div>
         </Panel>
       </div>
@@ -142,16 +152,25 @@ export default function TerritoryExplorer({ ctx, campaignId, refresh, territory,
   }
 
   const readiness = deriveTerritoryReadiness({ view: ctx.view, geographyTree: tree });
-  const constituencyLead = responsibilityFor(GEOGRAPHY_LEVEL.CONSTITUENCY, territory.constituency);
+  const constituencyLead = territory.constituency
+    ? responsibilityFor(GEOGRAPHY_LEVEL.CONSTITUENCY, territory.constituency)
+    : null;
 
   return (
     <div>
       <Label>{office?.name ?? territory.office} · {state?.name ?? territory.state}</Label>
       <Panel>
-        <div style={{ fontFamily: UI, fontWeight: 800, fontSize: 16, color: IVORY, marginBottom: 4 }}>{tree.constituency.name}</div>
+        <div style={{ fontFamily: UI, fontWeight: 800, fontSize: 16, color: IVORY, marginBottom: 4 }}>
+          {territory.constituency ? tree.constituency.name : `${state?.name ?? territory.state} (state-wide)`}
+        </div>
         <div style={{ fontFamily: UI, fontSize: 11.5, color: MUTED, marginBottom: 18 }}>
-          {territory.election} · {tree.lgas.length} LGA{tree.lgas.length === 1 ? "" : "s"} · Constituency Lead:{" "}
-          {constituencyLead ? personFor(constituencyLead.person) : "unassigned"}
+          {territory.constituency ? (
+            <>{territory.election} · {tree.lgas.length} LGA{tree.lgas.length === 1 ? "" : "s"} · Constituency Lead:{" "}
+              {constituencyLead ? personFor(constituencyLead.person) : "unassigned"}</>
+          ) : (
+            <>{territory.election} · {tree.lgas.length} LGA{tree.lgas.length === 1 ? "" : "s"} across {state?.name ?? "this state"} —
+              no constituency-level lead for a state-wide office; the campaign owner already leads it.</>
+          )}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 18 }}>
           <div>
@@ -169,7 +188,7 @@ export default function TerritoryExplorer({ ctx, campaignId, refresh, territory,
         </div>
       </Panel>
 
-      {!constituencyLead && (
+      {territory.constituency && !constituencyLead && (
         <div style={{ marginTop: 18 }}>
           <AssignPanel title="Assign Constituency Lead" level={GEOGRAPHY_LEVEL.CONSTITUENCY}
             geographyRef={{ value: territory.constituency, label: tree.constituency.name }}

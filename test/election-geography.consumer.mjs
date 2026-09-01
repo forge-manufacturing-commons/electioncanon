@@ -13,7 +13,7 @@
 import {
   proposeSetTerritory, executeSetTerritory,
 } from "../src/domains/election/geography/write.js";
-import { getConstituencyTerritory, listConstituencies, listPollingUnitsForWard } from "../src/domains/election/geography/read.js";
+import { getConstituencyTerritory, getStateTerritory, listConstituencies, listPollingUnitsForWard } from "../src/domains/election/geography/read.js";
 import { projectElection } from "../src/domains/election/projections.js";
 import { ELECTION_EVENT_TYPES } from "../src/domains/election/events.js";
 
@@ -91,6 +91,16 @@ const geographyFixture = {
     { constituency_id: CONSTITUENCY_ID, lga_id: LGA_SAPELE, geography_lgas: { id: LGA_SAPELE, name: "Sapele", state_code: "delta" } },
     { constituency_id: CONSTITUENCY_ID, lga_id: LGA_UVWIE, geography_lgas: { id: LGA_UVWIE, name: "Uvwie", state_code: "delta" } },
   ],
+  // Plain geography_lgas rows, queried DIRECTLY by state_code (never through
+  // geography_constituency_lgas) by getStateTerritory() — see that
+  // function's own header. Includes an out-of-state LGA to prove the query
+  // is actually filtered, not just returning everything.
+  geography_lgas: [
+    { id: LGA_OKPE, name: "Okpe", state_code: "delta" },
+    { id: LGA_SAPELE, name: "Sapele", state_code: "delta" },
+    { id: LGA_UVWIE, name: "Uvwie", state_code: "delta" },
+    { id: "lga-other-state", name: "Should Not Appear", state_code: "lagos" },
+  ],
   geography_wards: [],
   geography_polling_units: [],
 };
@@ -139,6 +149,41 @@ const CONSTITUENCIES = geographyFixture.geography_constituencies;
   const { data: puForWardA } = await listPollingUnitsForWard({ client, wardId: WARD_A });
   ok("R6. listPollingUnitsForWard (the lazy per-ward fetch TerritoryExplorer uses on expand) returns ONLY that ward's 2 PUs, not all 3",
      puForWardA.length === 2 && puForWardA.every((p) => p.ward_id === WARD_A));
+}
+
+// ---------- getStateTerritory (National geography pass — Governor/President drill-down) ----------
+{
+  const client = fakeGeographyClient(geographyFixture);
+  const { data: territory, error } = await getStateTerritory({ client, stateCode: "delta" });
+  ok("S1. getStateTerritory resolves with no error", error === null);
+  ok("S2. it resolves Delta's 3 LGAs directly by state_code, never through a constituency",
+     territory.lgas.length === 3 && territory.lgas.map((l) => l.name).sort().join(",") === "Okpe,Sapele,Uvwie");
+  ok("S3. an LGA belonging to a DIFFERENT state never leaks in", !territory.lgas.some((l) => l.name === "Should Not Appear"));
+  ok("S4. wards are honestly empty, pollingUnitTotal is honestly 0 for this fixture — same as the constituency path, no fabrication",
+     territory.wards.length === 0 && territory.pollingUnitTotal === 0);
+  ok("S5. no stateCode -> null, never a fabricated empty tree presented as a real resolution", (await getStateTerritory({ client, stateCode: null })).data === null);
+
+  // Same scaled fixture R5/R5b already proved getConstituencyTerritory
+  // handles correctly — getStateTerritory must resolve the identical real
+  // ward rows and PU count when queried by state instead of constituency,
+  // proving the two paths are genuinely symmetric, not a second, differently-behaved read.
+  const WARD_A = "ward-a", WARD_B = "ward-b";
+  const scaledFixture = {
+    ...geographyFixture,
+    geography_wards: [
+      { id: WARD_A, lga_id: LGA_OKPE, name: "Okpe Ward 1" },
+      { id: WARD_B, lga_id: LGA_SAPELE, name: "Sapele Ward 1" },
+    ],
+    geography_polling_units: [
+      { id: "pu-1", ward_id: WARD_A, code: "PU001", name: null },
+      { id: "pu-2", ward_id: WARD_A, code: "PU002", name: null },
+      { id: "pu-3", ward_id: WARD_B, code: "PU003", name: null },
+    ],
+  };
+  const scaledClient = fakeGeographyClient(scaledFixture);
+  const { data: scaledTerritory } = await getStateTerritory({ client: scaledClient, stateCode: "delta" });
+  ok("S6. once real wards/PUs exist, getStateTerritory resolves them exactly like getConstituencyTerritory does (2 wards, PU count 3)",
+     scaledTerritory.wards.length === 2 && scaledTerritory.pollingUnitTotal === 3);
 }
 
 // ---------- proposeSetTerritory / executeSetTerritory ----------

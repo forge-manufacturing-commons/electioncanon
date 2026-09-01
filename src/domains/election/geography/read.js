@@ -86,6 +86,43 @@ export async function getConstituencyTerritory({ client, constituencyId }) {
   return { data: { constituency, lgas, wards, pollingUnitTotal }, error: null };
 }
 
+/** State-level territory (Governor/President — office.boundary_level is
+ *  'state'/'national', so TERRITORY.SET carries no constituency). Mirrors
+ *  getConstituencyTerritory()'s exact return shape AND exact ward/PU-total
+ *  logic ({lgas, wards, pollingUnitTotal} — full ward rows, PU count-only,
+ *  same scale-hardening reasoning) — the only difference is resolving LGAs
+ *  DIRECTLY from geography_lgas by state_code instead of through
+ *  geography_constituency_lgas, since a state-wide office's territory isn't
+ *  scoped to any one constituency. */
+export async function getStateTerritory({ client, stateCode }) {
+  if (!stateCode) return { data: null, error: null };
+
+  const { data: lgaRows, error: lgaError } = await client
+    .from("geography_lgas").select("id, name, state_code").eq("state_code", stateCode).order("name");
+  if (lgaError) return { data: null, error: lgaError };
+  const lgas = (lgaRows ?? []).map((row) => ({ id: row.id, name: row.name, stateCode: row.state_code }));
+
+  const lgaIds = lgas.map((l) => l.id);
+  let wards = [];
+  if (lgaIds.length > 0) {
+    const { data: wardRows, error: wardsError } = await client
+      .from("geography_wards").select("id, lga_id, name").in("lga_id", lgaIds).order("name");
+    if (wardsError) return { data: null, error: wardsError };
+    wards = wardRows ?? [];
+  }
+
+  const wardIds = wards.map((w) => w.id);
+  let pollingUnitTotal = 0;
+  if (wardIds.length > 0) {
+    const { count, error: puCountError } = await client
+      .from("geography_polling_units").select("id", { count: "exact", head: true }).in("ward_id", wardIds);
+    if (puCountError) return { data: null, error: puCountError };
+    pollingUnitTotal = count ?? 0;
+  }
+
+  return { data: { lgas, wards, pollingUnitTotal }, error: null };
+}
+
 export async function listWardsForLga({ client, lgaId }) {
   if (!lgaId) return { data: [], error: null };
   return client.from("geography_wards").select("id, lga_id, name").eq("lga_id", lgaId).order("name");
@@ -97,6 +134,6 @@ export async function listPollingUnitsForWard({ client, wardId }) {
 }
 
 export default {
-  listOffices, listStates, listConstituencies, getConstituencyTerritory,
+  listOffices, listStates, listConstituencies, getConstituencyTerritory, getStateTerritory,
   listWardsForLga, listPollingUnitsForWard,
 };
