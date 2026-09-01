@@ -42,6 +42,9 @@ function InviteWizard({ campaignId, refresh, territory, myRole, myResponsibility
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [sentToken, setSentToken] = useState(null);
+  const [emailStatus, setEmailStatus] = useState(null);
+  const [emailError, setEmailError] = useState(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,7 +100,7 @@ function InviteWizard({ campaignId, refresh, territory, myRole, myResponsibility
     setBusy(true); setError(null);
     const geographyRef = role === "WARD_COORDINATOR" || role === "POLLING_UNIT_AGENT" ? wardId
       : role === "LGA_COORDINATOR" ? lgaId : null;
-    const { invitation, error: sendError } = await createInvitation({
+    const { invitation, emailStatus: status, emailError: sendEmailError, error: sendError } = await createInvitation({
       client: supabase, campaignId, invitedName: name.trim(), invitedEmail: email.trim(),
       intendedMemberRole: role === "DIRECTOR" ? "manager" : "staff",
       intendedResponsibilityRole: role === "DIRECTOR" ? null : role,
@@ -107,21 +110,44 @@ function InviteWizard({ campaignId, refresh, territory, myRole, myResponsibility
     setBusy(false);
     if (sendError) { setError(sendError); return; }
     setSentToken(invitation.token);
+    setEmailStatus(status);
+    setEmailError(sendEmailError);
     await refresh();
   };
 
   if (sentToken) {
     const link = `${window.location.origin}/invite/${sentToken}`;
+    // Honest status language (First-user completion pass, item 5):
+    // "Invitation created" is always true the moment we're here (the row
+    // exists). Whether the email was actually accepted for delivery is a
+    // SEPARATE fact, reported as its own line -- never folded into a single
+    // "Invitation sent" claim that would be false whenever the provider
+    // failed or isn't configured.
+    const emailLine = emailStatus === "queued"
+      ? { color: TEAL, text: `Invitation email queued for delivery to ${email}.` }
+      : emailStatus === "not_configured"
+        ? { color: AMBER, text: "Email delivery is not configured yet — share the link below directly." }
+        : { color: AMBER, text: `The invitation email could not be sent${emailError ? ` (${emailError})` : ""} — share the link below directly.` };
     return (
       <Panel accent={TEAL}>
-        <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 12, color: TEAL, marginBottom: 8 }}>Invitation sent</div>
+        <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 12, color: TEAL, marginBottom: 8 }}>Invitation created</div>
+        <div style={{ fontFamily: UI, fontSize: 13, color: emailLine.color, marginBottom: 10 }}>
+          {emailLine.text}
+        </div>
         <div style={{ fontFamily: UI, fontSize: 13, color: IVORY, marginBottom: 10 }}>
-          Share this link with {name} — it's the only way this invitation can be accepted.
+          This link is the only way {name} can accept this invitation — you can also send it yourself via WhatsApp, SMS, or any other channel.
         </div>
         <div style={{ fontFamily: "monospace", fontSize: 11.5, color: IVORY, background: BLACK, border: `1px solid ${BORDER}`, padding: "10px 12px", wordBreak: "break-all", marginBottom: 12 }}>
           {link}
         </div>
-        <button onClick={onDone} style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", padding: "10px 16px", border: "none", background: TEAL, color: BLACK, cursor: "pointer" }}>Done</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => { navigator.clipboard?.writeText(link); setCopied(true); }}
+            style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", padding: "10px 16px", border: `1px solid ${BORDER}`, background: "transparent", color: IVORY, cursor: "pointer" }}>
+            {copied ? "Copied ✓" : "Copy invitation link"}
+          </button>
+          <button onClick={onDone} style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", padding: "10px 16px", border: "none", background: TEAL, color: BLACK, cursor: "pointer" }}>Done</button>
+        </div>
       </Panel>
     );
   }

@@ -58,8 +58,8 @@ console.log("\nP1-2 — INTERNAL ENGINEERING LANGUAGE REMOVED");
      !/ForgeOS/.test(geoWrite));
   ok("2. geography/write.js's ward/PU refusal reason no longer cites a repo file path",
      !/supabase\/geography-import/.test(geoWrite));
-  ok("3. the authorization notice reads as ElectionCanon product language",
-     /ElectionCanon requires you to be signed in and authorised/.test(geoWrite));
+  ok("3. the authorization notice reads as plain product language, not a permission claim",
+     /NOT YET RECORDED — review this action, then click Approve to record it\./.test(geoWrite));
   ok("4. territoryReadiness.js's ward/PU coverage notes no longer cite a repo file path",
      !/supabase\/geography-import/.test(territoryReadiness));
   ok("5. territoryReadiness.js's notes read as product language (authoritative reference data)",

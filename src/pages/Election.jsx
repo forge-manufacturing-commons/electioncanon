@@ -43,9 +43,10 @@ import {
 import { ACTIVATION, ACTOR_KIND } from "../os/electionContext.js";
 import { ELECTION_SCOPE } from "../os/electionScope.js";
 import { READINESS_DIMENSION_STATUS as STATUS } from "../domains/election/studio/readiness.js";
+import { listOffices, getConstituencyTerritory } from "../domains/election/geography/read.js";
 import {
   ForgeHeader, WriteActionPanel, Label, Panel, ClaimRow, GapRow, NotStartedRow,
-  friendlyError, UI, DISPLAY, BLACK, IVORY, TEAL, AMBER, PINK, MUTED, BORDER,
+  friendlyError, UI, DISPLAY, BLACK, IVORY, TEAL, AMBER, PINK, MUTED, BORDER, inputStyle,
   CAPABILITIES_AVAILABLE_NOW, CAPABILITIES_COMING_NEXT, parseCampaignTitle,
 } from "./election/shared.jsx";
 import HomeSection from "./election/HomeSection.jsx";
@@ -279,6 +280,139 @@ function CountRow({ label, note }) {
  *  renders ClaimRow (a real Canon dimension), a data area renders CountRow
  *  (real cross-section data, no formal claim yet), and a genuinely empty
  *  area renders NotStartedRow — never a fabricated claim or score. */
+// FIRST-USER COMPLETION PASS (item 1) — a real, structured entry point for
+// candidate registration, routed through the EXISTING, unchanged
+// matchCandidateRegister()/proposeElectionWrite()/executeElectionWrite()
+// pipeline (studio/write.js) — no new Canon model, no new event type. That
+// pipeline only ever accepted one free-text command ("Register <name> as
+// candidate for <office> in <constituency>, <party>."), typeable only via
+// WriteActionPanel, which is mounted on Intelligence — not Readiness, where
+// Home's "Continue Preparation" actually sends the user. This panel asks
+// for exactly the two pieces of information the domain model doesn't
+// already have (name, party) — office and constituency are read from the
+// campaign's own already-set Territory, never re-asked — then constructs
+// the identical command string internally and calls the SAME
+// prepareElectionWrite/approveElectionWrite the free-text panel always
+// used. A real Canon event is what gets recorded; nothing here fabricates
+// completion.
+function CandidateRegistrationPanel({ ctx, campaignId, refresh }) {
+  const territory = ctx.view?.territory ?? null;
+  const [officeName, setOfficeName] = useState(null);
+  const [constituencyName, setConstituencyName] = useState(null);
+  const [loadingTerritory, setLoadingTerritory] = useState(true);
+  const [name, setName] = useState("");
+  const [party, setParty] = useState("");
+  const [prepared, setPrepared] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!territory) { setLoadingTerritory(false); return undefined; }
+    (async () => {
+      const [{ data: offices }, { data: tree }] = await Promise.all([
+        listOffices({ client: supabase }),
+        territory.constituency ? getConstituencyTerritory({ client: supabase, constituencyId: territory.constituency }) : Promise.resolve({ data: null }),
+      ]);
+      if (cancelled) return;
+      setOfficeName(offices?.find((o) => o.id === territory.office)?.name ?? territory.office ?? null);
+      setConstituencyName(tree?.constituency?.name ?? null);
+      setLoadingTerritory(false);
+    })();
+    return () => { cancelled = true; };
+  }, [territory?.office, territory?.constituency]); // eslint-disable-line
+
+  if (!territory) {
+    return (
+      <Panel accent={PINK}>
+        <div style={{ fontFamily: UI, fontSize: 12.5, color: IVORY, lineHeight: 1.6 }}>
+          Set your Territory (election, office, and constituency) before registering a candidate —
+          ElectionCanon needs to know where this candidate is standing.
+        </div>
+      </Panel>
+    );
+  }
+  if (loadingTerritory) {
+    return <Panel><div style={{ fontFamily: UI, fontSize: 12.5, color: MUTED }}>Resolving territory…</div></Panel>;
+  }
+
+  const doPrepare = async () => {
+    const cleanName = name.trim(), cleanParty = party.trim();
+    if (!cleanName || !cleanParty) { setError("Candidate name and party are both required."); return; }
+    const message = `Register ${cleanName} as candidate for ${officeName} in ${constituencyName}, ${cleanParty}.`;
+    setBusy(true); setError(null);
+    const result = await prepareElectionWrite({ client: supabase, requestedCampaign: campaignId, message });
+    setBusy(false);
+    if (result.status !== "PREPARED") {
+      setError(result.reason ?? `could not prepare candidate registration: ${result.status}`);
+      return;
+    }
+    setPrepared({ draft: result.draft, confirmationId: crypto.randomUUID() });
+  };
+
+  const doApprove = async () => {
+    if (!prepared) return;
+    setBusy(true); setError(null);
+    const result = await approveElectionWrite({
+      client: supabase, requestedCampaign: campaignId,
+      draft: prepared.draft.draft, confirmationId: prepared.confirmationId,
+    });
+    setBusy(false);
+    if (!result.success) { setError(result.error ?? "could not record candidate registration"); return; }
+    setPrepared(null); setName(""); setParty("");
+    await refresh();
+  };
+
+  return (
+    <Panel accent={AMBER}>
+      <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.14em",
+        textTransform: "uppercase", color: AMBER, marginBottom: 10 }}>Complete candidate registration</div>
+      <div style={{ fontFamily: UI, fontSize: 12, color: MUTED, marginBottom: 14, lineHeight: 1.6 }}>
+        Office: <span style={{ color: IVORY }}>{officeName ?? "—"}</span><br />
+        Constituency: <span style={{ color: IVORY }}>{constituencyName ?? "—"}</span>
+        <div style={{ marginTop: 4 }}>Already set on Territory — not asked again here.</div>
+      </div>
+      {!prepared ? (
+        <>
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Candidate's full name"
+            aria-label="Candidate name" style={{ ...inputStyle, marginBottom: 9 }} />
+          <input value={party} onChange={(e) => setParty(e.target.value)} placeholder="Party"
+            aria-label="Party" style={{ ...inputStyle, marginBottom: 9 }} />
+          <button onClick={doPrepare} disabled={busy || !name.trim() || !party.trim()}
+            style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.14em",
+              textTransform: "uppercase", padding: "11px 18px", border: "none",
+              background: busy || !name.trim() || !party.trim() ? BORDER : AMBER, color: BLACK,
+              cursor: busy || !name.trim() || !party.trim() ? "not-allowed" : "pointer", clipPath: FORGE_CLIPS.button }}>
+            {busy ? "Preparing…" : "Prepare"}
+          </button>
+        </>
+      ) : (
+        <>
+          <div style={{ fontFamily: UI, fontWeight: 700, fontSize: 10, letterSpacing: "0.14em",
+            textTransform: "uppercase", color: TEAL, marginBottom: 6 }}>Review</div>
+          <div style={{ fontFamily: UI, fontSize: 13, color: IVORY, marginBottom: 6 }}>{prepared.draft.summary}</div>
+          <div style={{ fontFamily: UI, fontSize: 11, color: MUTED, marginBottom: 14 }}>{prepared.draft.notice}</div>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button onClick={doApprove} disabled={busy}
+              style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.14em",
+                textTransform: "uppercase", padding: "11px 18px", border: "none",
+                background: busy ? BORDER : AMBER, color: BLACK,
+                cursor: busy ? "not-allowed" : "pointer", clipPath: FORGE_CLIPS.button }}>
+              {busy ? "Recording…" : "Approve"}
+            </button>
+            <button onClick={() => setPrepared(null)} disabled={busy}
+              style={{ fontFamily: UI, fontWeight: 700, fontSize: 11, letterSpacing: "0.14em",
+                textTransform: "uppercase", padding: "11px 18px", cursor: "pointer",
+                background: "transparent", color: MUTED, border: `1px solid ${BORDER}`,
+                clipPath: FORGE_CLIPS.button }}>Cancel</button>
+          </div>
+        </>
+      )}
+      {error && <div style={{ fontFamily: UI, fontSize: 12.5, color: PINK, marginTop: 12 }}>{friendlyError(error)}</div>}
+    </Panel>
+  );
+}
+
 function ReadinessSection({ ctx, campaignId, refresh }) {
   const byDim = Object.fromEntries(ctx.readiness.claims.map((c) => [c.dimension, c]));
   const view = ctx.view ?? {};
@@ -335,19 +469,25 @@ function ReadinessSection({ ctx, campaignId, refresh }) {
         <Label>Readiness by area — the same Canon claims and folded data above, organised for campaign preparation</Label>
       </div>
 
-      <div>
+      <div style={{ gridColumn: byDim.CANDIDATE_REGISTERED && byDim.CANDIDATE_REGISTERED.status !== STATUS.COMPLETE && ctx.actorKind === ACTOR_KIND.CANDIDATE_CAMPAIGN ? "1 / -1" : "auto" }}>
         <Label>1 · Candidate</Label>
         <Panel>
           {byDim.CANDIDATE_REGISTERED
             ? <ClaimRow claim={byDim.CANDIDATE_REGISTERED} statusColor={STATUS_COLOR} />
             : <NotStartedRow label="CANDIDATE_REGISTERED" note="No candidate registration recorded for this actor kind." />}
         </Panel>
+        {byDim.CANDIDATE_REGISTERED && byDim.CANDIDATE_REGISTERED.status !== STATUS.COMPLETE
+          && ctx.actorKind === ACTOR_KIND.CANDIDATE_CAMPAIGN && (
+          <div style={{ marginTop: 12 }}>
+            <CandidateRegistrationPanel ctx={ctx} campaignId={campaignId} refresh={refresh} />
+          </div>
+        )}
       </div>
 
       <div>
         <Label>2 · Legal / documentation</Label>
         <Panel>
-          <NotStartedRow label="REQUIRED_DOCUMENTS" note="Not yet tracked in Forge Election Canon." />
+          <NotStartedRow label="REQUIRED_DOCUMENTS" note="Not yet tracked by ElectionCanon." />
         </Panel>
       </div>
 
@@ -377,14 +517,14 @@ function ReadinessSection({ ctx, campaignId, refresh }) {
       <div>
         <Label>5 · Polling units</Label>
         <Panel>
-          <CountRow label="POLLING_UNITS" note={pollingUnits.length ? `${pollingUnits.length} polling unit${pollingUnits.length === 1 ? "" : "s"} configured. See Election Day.` : "Not yet tracked in Forge Election Canon — see Election Day."} />
+          <CountRow label="POLLING_UNITS" note={pollingUnits.length ? `${pollingUnits.length} polling unit${pollingUnits.length === 1 ? "" : "s"} configured. See Election Day.` : "Not yet tracked by ElectionCanon — see Election Day."} />
         </Panel>
       </div>
 
       <div>
         <Label>6 · Agents</Label>
         <Panel>
-          <CountRow label="AGENT_DEPLOYMENT" note={agents.length ? `${agents.length} agent${agents.length === 1 ? "" : "s"} assigned across polling units.` : "Not yet tracked in Forge Election Canon — see Election Day."} />
+          <CountRow label="AGENT_DEPLOYMENT" note={agents.length ? `${agents.length} agent${agents.length === 1 ? "" : "s"} assigned across polling units.` : "Not yet tracked by ElectionCanon — see Election Day."} />
         </Panel>
       </div>
 
@@ -405,7 +545,7 @@ function ReadinessSection({ ctx, campaignId, refresh }) {
       <div>
         <Label>9 · Election day</Label>
         <Panel>
-          <NotStartedRow label="ESCALATION_CONTACTS" note="Not yet tracked in Forge Election Canon." />
+          <NotStartedRow label="ESCALATION_CONTACTS" note="Not yet tracked by ElectionCanon." />
           <CountRow label="RESULT_CAPTURE" note={results.length ? `${results.length} simulated result(s) captured. See Election Day.` : "No results captured yet."} />
         </Panel>
       </div>
@@ -413,7 +553,7 @@ function ReadinessSection({ ctx, campaignId, refresh }) {
       <div>
         <Label>10 · Evidence / incident preparedness</Label>
         <Panel>
-          <NotStartedRow label="CAMPAIGN_DOCUMENTS" note="Not yet tracked in Forge Election Canon." />
+          <NotStartedRow label="CAMPAIGN_DOCUMENTS" note="Not yet tracked by ElectionCanon." />
           <CountRow label="INCIDENT_LOG" note={incidents.length ? `${incidents.length} incident(s) logged, ${incidents.filter((i) => i.status !== "RESOLVED" && i.status !== "CLOSED").length} unresolved.` : "No incidents logged yet — see Election Day."} />
         </Panel>
       </div>

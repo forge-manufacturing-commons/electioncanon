@@ -35,7 +35,7 @@ export const deterministicAdapter = ({ intent, canon }) => {
   // removed; the check exists so the refusal is legible rather than a shrug.
   if (intent?.type === INTENT.ACTION_REQUEST) {
     return [
-      unknown("authority", "ForgeOS requires an authenticated, authorised campaign identity to " +
+      unknown("authority", "ElectionCanon requires an authenticated, authorised campaign identity to " +
                            "record an event; a statement in conversation confers none"),
     ];
   }
@@ -115,7 +115,7 @@ export const deterministicAdapter = ({ intent, canon }) => {
           : `Follow up with the team responsible for ${wardId} and record what is needed to move it forward.`));
       } else {
         claims.push(recommendation(
-          "Name a ward and Forge Election Canon can recommend a specific next step for it."));
+          "Name a ward and ElectionCanon can recommend a specific next step for it."));
       }
       return claims;
     }

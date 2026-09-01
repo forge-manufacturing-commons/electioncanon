@@ -27,13 +27,17 @@ import {
 } from "../events.js";
 import { ASSIGNMENT_STATUS } from "../mobilization/write.js";
 
-// PRE-LAUNCH UX CLEANUP PASS — was "ForgeOS requires an authenticated,
-// authorised campaign identity..." — internal system/architecture language
-// with no meaning to a campaign user. This notice is shown verbatim on the
-// Territory approval screen (StructuredWritePanel in shared.jsx), which a
-// first-time user reaches on their very first real action in the product.
+// FIRST-USER COMPLETION PASS — this notice is shown on EVERY freshly
+// prepared draft, before Approve is ever clicked — it is a static label for
+// the PENDING state, not a real-time permission check result (an
+// authorised owner sees this too, on every single action, right before it
+// succeeds). The prior "requires you to be signed in and authorised"
+// wording (itself a PRE-LAUNCH UX CLEANUP PASS fix over "ForgeOS
+// requires...") still read as a permission warning in the common case
+// where the user IS authorised. A real Approve failure is reported
+// separately, via `error`/friendlyError() — never folded into this notice.
 const NOT_AUTHORISED_NOTICE =
-  "NOT RECORDED · NOT AUTHORISED — ElectionCanon requires you to be signed in and authorised to make this change.";
+  "NOT YET RECORDED — review this action, then click Approve to record it.";
 export const MAX_FIELD_LENGTH = 200;
 
 function requireText(raw, label) {

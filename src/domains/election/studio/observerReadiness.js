@@ -73,8 +73,8 @@ function observerAssignmentClaim(observers) {
     dimension: "OBSERVER_ASSIGNMENT",
     status: hasAny ? READINESS_STATUS.COMPLETE : READINESS_STATUS.UNKNOWN,
     value: hasAny
-      ? `${observers.length} observer assignment${observers.length === 1 ? "" : "s"} recorded in Forge Election Canon`
-      : "no observer assignment is recorded in Forge Election Canon",
+      ? `${observers.length} observer assignment${observers.length === 1 ? "" : "s"} recorded for this organisation`
+      : "No observer assignment has been recorded for this organisation.",
     threshold: "observers{} is non-empty",
     sourceEntity: "observers", sourceEvent: "observer.assignment.recorded",
     calculation: "Object.keys(view.observers).length > 0",
@@ -126,10 +126,10 @@ export function deriveObserverReadiness(view = {}) {
     knownObserverCoverage: Object.freeze({
       knownObservers: observers.length,
       note: observers.length > 0
-        ? "This reflects only the observers already recorded in Forge Election Canon. " +
+        ? "This reflects only the observers already recorded for this organisation. " +
           "The true operational deployment plan for this organisation is not a Canon fact " +
           "and is not represented here — this is not full deployment coverage."
-        : "Forge Election Canon has no observer assignments recorded at all.",
+        : "No observer assignments have been recorded for this organisation yet.",
     }),
     // Every category Loop 28/29's own briefs named for observer
     // organisations that this loop found NO authoritative event for.

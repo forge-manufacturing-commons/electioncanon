@@ -5,6 +5,15 @@
 // SECURITY DEFINER functions in 20260831000000_election_campaign_
 // invitations.sql -- all authorization logic lives there, not here.
 //
+// createInvitation() ALSO triggers the actual email dispatch, via the
+// election-invitation-email Edge Function -- see that function's own
+// header for why it is invoked with only the new row's id (never
+// email content built here) and why a real send failure never rolls back
+// the invitation row: the "Copy invitation link" fallback exists exactly
+// so a created-but-unemailed invitation is still fully usable. emailStatus
+// is reported honestly and separately from the row-creation result --
+// "queued" means the email provider accepted it, never "delivered".
+//
 // acceptInvitation() is a SEQUENCE, not a single call: (1) the privileged
 // accept_campaign_invitation() RPC creates campaign membership -- the one
 // genuinely privileged step, since campaign_members has no client INSERT
@@ -42,8 +51,31 @@ export async function createInvitation({
     p_intended_geography_ref: intendedGeographyRef,
     p_expires_in_days: expiresInDays,
   });
-  if (error) return { invitation: null, error: error.message };
-  return { invitation: data, error: null };
+  if (error) return { invitation: null, emailStatus: null, emailError: null, error: error.message };
+
+  // The invitation ROW is now real and durable regardless of what happens
+  // next -- a thrown/failed email dispatch is caught and reported as an
+  // honest emailStatus, never surfaced as if createInvitation() itself
+  // failed (it did not: the Canon-adjacent administrative record exists).
+  let emailStatus = "failed";
+  let emailError = null;
+  try {
+    const { data: fnData, error: fnError } = await client.functions.invoke("election-invitation-email", {
+      body: { invitation_id: data.id },
+    });
+    if (fnError) {
+      emailError = fnError.message || "the invitation email could not be sent";
+    } else if (fnData?.ok) {
+      emailStatus = "queued";
+    } else {
+      emailStatus = fnData?.code === "PROVIDER_NOT_CONFIGURED" ? "not_configured" : "failed";
+      emailError = fnData?.reason ?? null;
+    }
+  } catch (err) {
+    emailError = err?.message || "the invitation email could not be sent";
+  }
+
+  return { invitation: data, emailStatus, emailError, error: null };
 }
 
 export async function revokeInvitation({ client, invitationId }) {

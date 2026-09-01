@@ -98,7 +98,7 @@ function WardsTab({ ctx }) {
   const sorted = [...wards].sort((a, b) => (a.organisation ? 1 : 0) - (b.organisation ? 1 : 0));
   return (
     <div>
-      <Label>Wards known to Forge Election Canon</Label>
+      <Label>Wards known to ElectionCanon</Label>
       {wards.length > 0 && (
         <div style={{ fontFamily: UI, fontSize: 11.5, color: uncovered.length ? PINK : TEAL, marginBottom: 10 }}>
           {uncovered.length === 0 ? "Every known ward has a coordinator or team assigned." : `${uncovered.length} ward${uncovered.length === 1 ? "" : "s"} with no coordinator or team — shown first below.`}

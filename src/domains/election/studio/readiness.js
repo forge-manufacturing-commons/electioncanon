@@ -66,8 +66,8 @@ function candidateClaim(candidate) {
     dimension: "CANDIDATE_REGISTERED",
     status: candidate ? READINESS_STATUS.COMPLETE : READINESS_STATUS.INCOMPLETE,
     value: candidate
-      ? `a candidate ("${candidate.id}") is registered in Forge Election Canon`
-      : "no candidate is registered in Forge Election Canon",
+      ? `${candidate.name ?? "A candidate"} is registered for this campaign`
+      : "No candidate registration has been recorded for this campaign.",
     threshold: "candidates{} is non-empty",
     sourceEntity: "candidates", sourceEvent: "candidate.registered",
     calculation: "Object.keys(view.candidates).length > 0",
@@ -180,13 +180,13 @@ export function deriveReadiness(view = {}) {
         healthyWards: healthyCount,
         atRiskWards: atRiskCount,
         unreportedWards: unreportedCount,
-        note: "This reflects only the wards already recorded in Forge Election Canon. " +
+        note: "This reflects only the wards already recorded for this campaign. " +
               "The true total number of wards in the constituency is not a Canon fact " +
               "and is not represented here — this is not full constituency coverage.",
       })
     : Object.freeze({
         knownWards: 0, assignedWards: 0, healthyWards: 0, atRiskWards: 0, unreportedWards: 0,
-        note: "Forge Election Canon has no wards recorded at all.",
+        note: "No wards recorded for this campaign yet.",
       });
 
   return Object.freeze({

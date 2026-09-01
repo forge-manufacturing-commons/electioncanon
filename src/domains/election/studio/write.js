@@ -78,8 +78,15 @@ export const ELECTION_WRITE_OPERATION = Object.freeze({
   OBSERVER_ASSIGN: "write.observer.assign",
 });
 
+// FIRST-USER COMPLETION PASS — this notice is shown on EVERY freshly
+// prepared draft, before Approve is ever clicked — it is a static label for
+// the PENDING state, not the result of a real-time permission check (a
+// signed-in, authorised owner sees this too, on every single action). This
+// is the exact panel behind "Record a campaign action" / candidate
+// registration, PREPARE/APPROVE via WriteActionPanel (shared.jsx). A real
+// Approve failure is reported separately, in `error`/friendlyError().
 const NOT_AUTHORISED_NOTICE =
-  "NOT PUBLISHED · NOT AUTHORISED — ForgeOS requires an authenticated, authorised campaign identity before this can be recorded.";
+  "NOT YET RECORDED — review this action, then click Approve to record it.";
 
 /** Same ceiling discipline as Business's MAX_ENTITY_NAME_LENGTH — not an electoral fact. */
 export const MAX_FIELD_LENGTH = 200;
@@ -249,7 +256,7 @@ export async function proposeElectionWrite({ message, view = {} } = {}) {
     const ward = view?.wards?.[wardText.value];
     if (!ward) {
       return { status: "NEEDS_WARD", understoodBy, draft: null,
-        reason: `no ward "${wardText.value}" is recorded in Forge Election Canon — assign a team to it before reporting its status` };
+        reason: `no ward "${wardText.value}" has been recorded for this campaign — assign a team to it before reporting its status` };
     }
     const status = validateFreeText(report.statusText, "status");
     if (!status.valid) return { status: "NEEDS_STATUS", understoodBy, draft: null, reason: status.reason };

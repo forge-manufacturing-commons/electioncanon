@@ -14,8 +14,17 @@ import {
   ELECTION_EVENT_TYPES,
 } from "../events.js";
 
+// FIRST-USER COMPLETION PASS — this notice is shown on EVERY freshly
+// prepared draft, before Approve is ever clicked — it is a static label for
+// the PENDING state, not the result of a real-time permission check (a
+// signed-in, authorised owner sees this too, on every single action). The
+// previous wording ("ForgeOS requires an authenticated, authorised campaign
+// identity...") read as a permission denial in exactly the case where the
+// user IS authorised and Approve is about to succeed. If Approve genuinely
+// fails, that is reported separately, in `error`/friendlyError() — never
+// folded into this notice.
 const NOT_AUTHORISED_NOTICE =
-  "NOT RECORDED · NOT AUTHORISED — ForgeOS requires an authenticated, authorised campaign identity before this can be recorded.";
+  "NOT YET RECORDED — review this action, then click Approve to record it.";
 export const MAX_FIELD_LENGTH = 200;
 
 function requireText(raw, label) {

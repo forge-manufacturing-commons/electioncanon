@@ -118,7 +118,7 @@ const stamp = (e, i, prefix) => Object.freeze({ ...e, eventId: `${prefix}-${i}`,
   ok("A3. the one candidate claim is INCOMPLETE, never COMPLETE, never silently omitted",
      r.claims.length === 1 && r.claims[0].status === STATUS.INCOMPLETE);
   ok("A4. an empty Canon still produces exactly one gap (missing candidate), not a crash and not zero gaps",
-     r.gaps.length === 1 && r.gaps[0].what.includes("no candidate"));
+     r.gaps.length === 1 && r.gaps[0].what.includes("No candidate registration has been recorded"));
   ok("A5. every listed unsupported dimension is explicitly named, never silently absent from the response shape",
      r.unsupportedDimensions.length > 15 && r.unsupportedDimensions.includes("POLLING_UNIT_COVERAGE"));
 }
