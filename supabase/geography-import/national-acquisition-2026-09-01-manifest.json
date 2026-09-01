@@ -1,0 +1,18 @@
+{
+  "source_name": "INEC Continuous Voter Registration Portal — Polling Unit Locator (PublicApi)",
+  "source_url": "https://cvr.inecnigeria.org/pu",
+  "retrieved_at": "2026-09-01T14:18:32.346Z",
+  "acquisition_started_at": "2026-09-01T14:07:56.897Z",
+  "reference_description": "Live current INEC CVR administrative geography (State -> LGA -> Ward -> Polling Unit). Not INEC-labelled with an explicit election-cycle year — see inec-source.mjs's own header.",
+  "state_count": 37,
+  "lga_count": 774,
+  "ward_count": 8810,
+  "polling_unit_count": 176846,
+  "successful_requests": 9621,
+  "retried_requests": 9,
+  "failed_requests": 0,
+  "invalid_responses": 0,
+  "validation_status": "CLEAN — zero unresolved requests",
+  "snapshot_file": "national-snapshot.json",
+  "snapshot_sha256": "4e7afa06989b84a073f6d6fc9a917f969039be311f2963eeccd4c1c8dbcaeb61"
+}

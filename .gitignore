@@ -7,3 +7,4 @@ dist/
 vite.config.js.timestamp-*.mjs
 supabase/.temp/
 .vercel/
+supabase/geography-import/snapshots/

@@ -1,0 +1,68 @@
+ELECTORAL GEOGRAPHY — NATIONAL INTEGRITY REPORT
+
+STATE/FCT       LGAs   WARDS     PUs  FAILURES  VALID.ERR  STATUS
+abia              17     184    4062         0          7  ANOMALIES FOUND
+adamawa           21     226    4104         0         17  ANOMALIES FOUND
+akwa_ibom         31     329    4353         0         14  ANOMALIES FOUND
+anambra           21     326    5720         0         17  ANOMALIES FOUND
+bauchi            20     212    5423         0         21  ANOMALIES FOUND
+bayelsa            8     105    2244         0         18  ANOMALIES FOUND
+benue             23     277    5102         0          5  ANOMALIES FOUND
+borno             27     312    5071         0          6  ANOMALIES FOUND
+cross_river       18     193    3281         0         26  ANOMALIES FOUND
+delta             25     270    5863         0         28  ANOMALIES FOUND
+ebonyi            13     171    2946         0          4  ANOMALIES FOUND
+edo               18     192    4519         0         19  ANOMALIES FOUND
+ekiti             16     177    2445         0          1  ANOMALIES FOUND
+enugu             17     260    4145         0         17  ANOMALIES FOUND
+fct                6      62    2822         0         11  ANOMALIES FOUND
+gombe             11     114    2988         0          7  ANOMALIES FOUND
+imo               27     305    4758         0         24  ANOMALIES FOUND
+jigawa            27     287    4522         0         23  ANOMALIES FOUND
+kaduna            23     255    8012         0         40  ANOMALIES FOUND
+kano              44     484   11222         0         51  ANOMALIES FOUND
+katsina           34     361    6652         0         34  ANOMALIES FOUND
+kebbi             21     225    3743         0          5  ANOMALIES FOUND
+kogi              21     239    3508         0         14  ANOMALIES FOUND
+kwara             16     193    2887         0         31  ANOMALIES FOUND
+lagos             20     245   13325         0         42  ANOMALIES FOUND
+nasarawa          13     147    3256         0         27  ANOMALIES FOUND
+niger             25     274    4950         0          1  ANOMALIES FOUND
+ogun              20     236    5042         0          5  ANOMALIES FOUND
+ondo              18     203    3933         0        134  ANOMALIES FOUND
+osun              30     332    3763         0         16  ANOMALIES FOUND
+oyo               33     351    6390         0         11  ANOMALIES FOUND
+plateau           17     207    4989         0         40  ANOMALIES FOUND
+rivers            23     319    6866         0         34  ANOMALIES FOUND
+sokoto            23     244    3991         0         21  ANOMALIES FOUND
+taraba            16     168    3597         0          2  ANOMALIES FOUND
+yobe              17     178    2823         0          2  ANOMALIES FOUND
+zamfara           14     147    3529         0          4  ANOMALIES FOUND
+
+NATIONAL TOTALS — states: 37, LGAs: 774, wards: 8810, polling units: 176846
+Request failures: 0, retried: 9, invalid responses: 0
+
+RECONCILIATION vs. reference figures (validation expectations, NOT forced):
+  states: actual=37 expected=37 diff=0 MATCH
+  lgas: actual=774 expected=774 diff=0 MATCH
+  wards: actual=8810 expected=8809 diff=1 MISMATCH — reported honestly, not corrected
+  polling_units: actual=176846 expected=176846 diff=0 MATCH
+
+ANOMALY CATEGORIES (every one always reported, even at zero):
+  duplicate LGA ids: 0
+  duplicate Ward ids: 0
+  duplicate PU ids: 0
+  duplicate LGA names (within a state): 0
+  duplicate Ward names (under the same LGA): 1
+  duplicate PU names (under the same Ward): 778
+  orphan Wards: 0
+  orphan PUs: 0
+  malformed LGA ids: 0
+  malformed Ward ids: 0
+  malformed PU ids: 0
+  empty LGAs (0 wards, not a failure): 0
+  empty Wards (0 PUs, not a failure): 1
+  retried requests: 9
+  permanently failed requests: 0
+
+ANOMALIES PRESENT — see per-state table and JSON report before proposing import.

@@ -257,3 +257,104 @@ handled as a new import batch with a new `source` value describing it
 If/when a genuine second cycle's geography needs to coexist with the
 first, that is the moment to design the versioning relationship the spec
 anticipated — against a real second dataset, not a hypothetical one.
+
+## Pre-import qualification pass — tooling, multi-state pilot, and a hard boundary
+
+Building on the Delta-only reconciliation above, this pass added the
+production-grade acquisition machinery and ran a wider (still read-only,
+still zero database writes) pilot before any import is proposed.
+
+**New tooling** (all pure/injectable where the logic is testable, all
+network I/O isolated to one file — see each file's own header):
+- `harden.mjs` — `fetchWithRetry()` (timeout + exponential backoff, capped
+  retries, a THREE-WAY outcome: `OK` / `REQUEST_FAILED` / `INVALID_RESPONSE`
+  — a failed request can never silently become an empty result),
+  `runBounded()` (bounded concurrency + polite request pacing),
+  `tallyOutcome()`, `checksumOf()` (deterministic SHA-256).
+- `checkpoint.mjs` — load/save/resume primitives; a crawl interrupted
+  partway through loses at most the one state in progress.
+- `acquire-national-snapshot.mjs` — the real, hardened national crawler.
+  Concurrency capped at 3, ~60ms stagger between request starts, 10s
+  per-request timeout, 5 retries with exponential backoff. Writes
+  `snapshots/national-snapshot.json` (gitignored — generated data, not
+  source), `snapshots/manifest.json` (source/provenance/counts/checksum),
+  and an `snapshots/acquisition-log.jsonl` of every retry/failure.
+- `national-integrity-report.mjs` — runs the full `integrity.mjs`
+  pipeline over an acquired snapshot; writes a machine-readable JSON
+  report and a human-readable table, one row per state, every anomaly
+  category always present even at zero.
+- `dry-run-import.mjs` — reads REAL existing rows (read-only — this
+  script calls nothing but `.select()`) and diffs them against
+  INEC-sourced candidate rows via `integrity.mjs`'s `diffForImport()`,
+  proving insert/already-existing/conflicting counts without writing
+  anything.
+
+**Multi-state qualification pilot.** Delta (control, from the prior pass)
+plus Lagos, Kano, Rivers, and FCT — chosen for being maximally different
+(Lagos: dense/urban; Kano: largest LGA count; Rivers: Niger Delta;
+FCT: federal territory, only 6 LGAs). All five reconciled cleanly: LGA
+counts matched INEC's own figures exactly in every case, zero request
+failures, zero validation anomalies. See `snapshots/integrity-report.txt`
+for the full per-state table once `national-integrity-report.mjs` has
+been run against an acquired snapshot.
+
+**A hard, deliberate boundary: administrative geography vs. electoral
+delimitation.** The verified INEC CVR source qualifies problem A —
+State → LGA → Ward → Polling Unit, the administrative/polling hierarchy —
+convincingly. It does **not** qualify problem B — Office → Constituency →
+constituent LGAs/Wards, INEC's own electoral delimitation. No federal
+constituency, senatorial district, or state-assembly-constituency boundary
+is inferred from names or assumed from administrative geography anywhere
+in this codebase. The existing, independently-verified Okpe/Sapele/Uvwie
+constituency seed remains exactly as it was. **Acquiring authoritative
+constituency delimitation is a separate, still-open problem for a future
+pass** — INEC does publish delimitation review reports (e.g. the
+Warri Federal Constituency case), but as narrative PDF documents on a
+case-by-case basis, not as a structured, queryable dataset the way the
+CVR `PublicApi` serves administrative geography. No live equivalent was
+found during this pass's research.
+
+**Scale review (Phase 7) — no index changes needed.** Now that a full
+national snapshot has actually been acquired (774 LGAs, 8,810 wards,
+176,846 polling units — see below), every existing query pattern in this
+codebase was checked against it. All four existing indexes already exist
+from `20260829000000_election_geography.sql` and are exactly what each
+pattern needs:
+
+| Index | Backs |
+|---|---|
+| `geography_lgas_state_idx (state_code)` | `getStateTerritory()`'s `.eq("state_code", ...)` |
+| `geography_wards_lga_idx (lga_id)` | `getConstituencyTerritory()`/`getStateTerritory()`'s `.in("lga_id", [...])`, `listWardsForLga()`'s `.eq("lga_id", ...)` |
+| `geography_polling_units_ward_idx (ward_id)` | the count-only `.in("ward_id", [...])` PU-total query, `listPollingUnitsForWard()`'s `.eq("ward_id", ...)` |
+| `geography_constituency_lgas_lga_idx (lga_id)` | `create_campaign_invitation()`'s ward/LGA authorization joins |
+
+No query anywhere in Territory Explorer, Organisation's geography
+selectors, invitation geography validation, responsibility validation, or
+readiness roll-up ever scans an unbounded slice of `geography_wards`/
+`geography_polling_units` — every one is scoped to one state's LGAs, one
+constituency's LGAs' wards, or one specific ward's polling units (and the
+PU-total query is COUNT-only, never fetching rows). This holds at the now
+CONFIRMED real national row counts, not just in theory — **no new index
+is proposed**, per this pass's own "do not add speculatively" instruction.
+
+**A real, notable finding from the full national crawl.** One anomaly:
+Benue State's GWER EAST LGA has TWO wards both named "MBAIKYAAN" — one
+real (INEC ward id 1462, populated with real polling units) and one
+apparently empty duplicate (INEC ward id 8810, zero polling units). This
+single extra ward accounts for the entire national ward-count discrepancy
+(8,810 acquired vs. INEC's own stated ~8,809). **Not corrected, not
+merged, not guessed** — flagged for human review (with direct INEC
+contact, if pursued) before any import touches Benue/GWER EAST
+specifically. Every other one of the 774 LGAs, 8,809 other wards, and
+176,846 polling units shows zero duplicate ids, zero orphans, and zero
+malformed identifiers.
+
+**Running the national acquisition + report yourself:**
+```sh
+node supabase/geography-import/acquire-national-snapshot.mjs   # read-only, resumable, polite pacing
+node supabase/geography-import/national-integrity-report.mjs   # analyzes the resulting local snapshot
+```
+Neither script requires any credential — both are pure reads against
+INEC's own public endpoint plus local file I/O. `dry-run-import.mjs` is
+the only script in this set that touches the ElectionCanon database, and
+even it only ever calls `.select()`.

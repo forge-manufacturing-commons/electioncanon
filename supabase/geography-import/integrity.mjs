@@ -90,4 +90,44 @@ export function findConflicts(extractA, extractB, keyFn, compareFields) {
   return conflicts;
 }
 
-export default { findDuplicates, findOrphans, findMalformedIdentifiers, findInconsistent, reconcileCount, findConflicts };
+/**
+ * DRY-RUN IMPORT DIFF (Pre-import qualification pass, Phase 6). Never
+ * writes anything — a pure comparison of `candidateRows` (what a real
+ * import WOULD load, e.g. from an acquired snapshot) against
+ * `existingRows` (a REAL read of what the database already holds),
+ * keyed by the same natural key the database's own `unique(...)`
+ * constraint enforces (e.g. `(state_code, name)` for LGAs). Three
+ * outcomes, exactly mirroring the runner's own `upsert(...,
+ * {ignoreDuplicates:true})` semantics PLUS one more the database can't
+ * distinguish on its own:
+ *   toInsert       — key not present in existingRows at all.
+ *   alreadyExisting — key present, and every field in `compareFields`
+ *                     matches — this is what `ON CONFLICT DO NOTHING`
+ *                     silently and safely skips.
+ *   conflicting    — key present, but `compareFields` differ (e.g. the
+ *                     existing row's `source` disagrees with the
+ *                     candidate's) — the database would ALSO silently
+ *                     skip this via ON CONFLICT DO NOTHING, which is
+ *                     exactly why a human-reviewed report is needed:
+ *                     silent-skip is safe for the database (never
+ *                     corrupts existing data) but would hide a real
+ *                     discrepancy from the operator if this diff didn't
+ *                     surface it separately.
+ */
+export function diffForImport(candidateRows, existingRows, keyFn, compareFields = []) {
+  const existingByKey = new Map((existingRows ?? []).map((row) => [keyFn(row), row]));
+  const toInsert = [];
+  const alreadyExisting = [];
+  const conflicting = [];
+  for (const candidate of candidateRows ?? []) {
+    const key = keyFn(candidate);
+    const existing = existingByKey.get(key);
+    if (!existing) { toInsert.push(candidate); continue; }
+    const mismatched = compareFields.filter((field) => candidate[field] !== undefined && existing[field] !== undefined && candidate[field] !== existing[field]);
+    if (mismatched.length > 0) conflicting.push({ candidate, existing, mismatchedFields: mismatched });
+    else alreadyExisting.push({ candidate, existing });
+  }
+  return { toInsert, alreadyExisting, conflicting };
+}
+
+export default { findDuplicates, findOrphans, findMalformedIdentifiers, findInconsistent, reconcileCount, findConflicts, diffForImport };
