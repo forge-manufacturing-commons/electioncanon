@@ -19,11 +19,75 @@ fabricated — see that migration's own header.
 **Classification: NATIONAL GEOGRAPHY ARCHITECTURE READY — AUTHORITATIVE
 DATA IMPORT OUTSTANDING.** The schema, RLS, progressive-disclosure reads,
 responsibility-assignment validation, readiness roll-up, and the import
-tooling below are all built and tested. The *data* to populate them beyond
-the original acceptance-test slice has not been imported, because it could
-not be verified to the standard this project requires — see below.
+tooling below are all built and tested. No new data has been written to
+the database this pass — see "National geography data acquisition &
+verification pass" below for why the classification stays B even though a
+genuinely verified official source now exists.
 
-### Why the national LGA import did not proceed
+## National geography data acquisition & verification pass — an official source was found
+
+A subsequent pass (after the Wikipedia attempt documented below was
+declined) investigated INEC's own official digital infrastructure directly,
+rather than a secondary/community dataset. **INEC's own live Continuous
+Voter Registration Polling Unit Locator (`https://cvr.inecnigeria.org/pu`)
+is backed by an unauthenticated, public JSON API** — discovered by
+inspecting the network requests that page's own State → LGA → Ward →
+Polling Unit cascading dropdown makes:
+
+```
+GET https://cvr.inecnigeria.org/PublicApi/lgas/1/Search?data[Search][state_id]=<state_id>
+GET https://cvr.inecnigeria.org/PublicApi/wards/1/Search?data[Search][local_government_id]=<lga_id>
+GET https://cvr.inecnigeria.org/PublicApi/pus/1/Search?data[Search][registration_area_id]=<ward_id>
+```
+
+This is INEC's own primary infrastructure — the same data their own public
+tool serves to real voters — not a scrape of Wikipedia/Kaggle/GitHub. See
+`inec-source.mjs` for the client (`parseCascadeResponse()`, tested; the live
+`fetch*` functions are intentionally untested — real network I/O, see that
+file's own header) and `integrity.mjs` for the validation pipeline
+(duplicate/orphan/malformed-id/inconsistency/count-reconciliation/
+conflicting-extract detection).
+
+**A controlled Delta State pilot was run** (not a national import — see
+`reconcile-delta.mjs` and `fixtures/inec-delta-*-live.json` for the full,
+real, captured data):
+
+- National totals, confirmed directly from `inecnigeria.org/polling-units/`:
+  **37 states+FCT, 774 LGAs, 8,809 wards, 176,846 polling units** — all
+  reconcile exactly against the figures this pass was asked to check.
+- Delta State, fully live-crawled (all 25 LGAs → all wards → PU counts,
+  zero unresolved requests): **25 LGAs (matches expected), 270 wards,
+  5,863 polling units.**
+- The existing acceptance-test slice (Okpe/Sapele/Uvwie) confirmed
+  present in INEC's own data, by name, with real ward counts: **Okpe 10
+  wards, Sapele 11 wards, Uvwie 10 wards (31 total)** — none of which are
+  imported into ElectionCanon yet. This is the exact, real, non-fabricated
+  gap the next pass would close.
+- Integrity checks over the real captured data: 0 duplicate ward names,
+  0 duplicate INEC ids, 0 malformed identifiers.
+- **The existing 3-LGA seed was not touched.** No migration, no write, no
+  service-role call — `reconcile-delta.mjs` makes zero network/database
+  calls; it only reads the two fixture files above.
+
+Run the reconciliation report yourself: `node
+supabase/geography-import/reconcile-delta.mjs`.
+
+**Why this stays classification B, not A**, even with a verified source in
+hand: only Delta was piloted (reconciliation, not import); the other 35
+states+FCT have not been crawled; and — critically — **no data has actually
+been written to the database**. Per this pass's own explicit instruction,
+national import is a *separate, subsequent* decision, proposed only after
+this reconciliation is reviewed.
+
+**Open questions for whoever approves the next step:** (1) INEC's own
+interface does not label this data with an explicit election-cycle/year —
+it is the live, current CVR configuration, described here as such rather
+than asserted as "2023" or "2027" data; (2) this endpoint is not documented
+by INEC as a public API and could change or be rate-limited without notice
+— a real import would need retry/backoff logic (one transient non-JSON
+response was observed and successfully retried during the Delta crawl).
+
+### Why the earlier national LGA import attempt did not proceed
 
 Nigeria's 774 LGAs are stable, uncontroversial administrative fact (unlike
 ward/PU boundaries, which are INEC's own periodically-revised delimitation
@@ -44,7 +108,10 @@ left untouched.
 **What would unblock this:** a structured, citable dataset (e.g. an
 official NBS/INEC publication, or a well-maintained structured repository
 that can be fetched and diffed row-by-row rather than summarized) that
-permits verifying counts and names per state before loading.
+permits verifying counts and names per state before loading. **Superseded
+by the finding above** — INEC's own `PublicApi` now serves exactly this,
+row-by-row and verifiable, for LGAs/wards/polling units alike, not just
+LGAs.
 
 ## Import tooling (Phase A infrastructure)
 
@@ -53,6 +120,19 @@ in-batch duplicate detection). No network, no filesystem, no Supabase
 client — this is what `test/election-geography-import.consumer.mjs` tests
 directly, against clearly-labelled *synthetic* fixtures (never real
 geography).
+
+`inec-source.mjs` — the live INEC `PublicApi` client (`parseCascadeResponse()`,
+pure and tested; `fetchLgasForState()`/`fetchWardsForLga()`/
+`fetchPollingUnitsForWard()`, real network I/O, intentionally untested —
+see the file's own header). `integrity.mjs` — the validation pipeline
+(`findDuplicates`, `findOrphans`, `findMalformedIdentifiers`,
+`findInconsistent`, `reconcileCount`, `findConflicts`), pure and tested.
+`reconcile-delta.mjs` — the read-only Delta pilot report, run against the
+real captured fixtures below; makes no network or database call itself.
+See `test/election-geography-inec-reconciliation.consumer.mjs` for the
+full test coverage (parsing, validation pipeline, and the real-data Delta
+reconciliation) and the "National geography data acquisition &
+verification pass" section above for the findings.
 
 `import-lgas.mjs` — the runner. Reads a JSON fixture, validates it against
 the real `geography_states` rows, and loads it idempotently. **Must be run

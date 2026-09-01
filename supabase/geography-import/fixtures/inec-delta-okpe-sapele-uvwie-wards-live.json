@@ -1,0 +1,67 @@
+{
+  "source_name": "INEC Continuous Voter Registration Portal — Polling Unit Locator (PublicApi)",
+  "source_url": "https://cvr.inecnigeria.org/pu",
+  "source_endpoint_pattern": "https://cvr.inecnigeria.org/PublicApi/wards/1/Search?data[Search][local_government_id]={inecLgaId}",
+  "retrieval_method": "Live, unauthenticated fetch() from an active browser session on the official INEC domain, captured via network-request inspection of cvr.inecnigeria.org/pu's own cascading State/LGA/Ward/Polling-Unit locator form.",
+  "retrieved_at": "2026-09-01T00:00:00Z",
+  "reference_cycle": "Not explicitly labelled by INEC on this page as a specific election year. This reflects the CURRENT live configuration served by INEC's Continuous Voter Registration system as of the retrieval date — the same data INEC's own public Polling Unit Locator serves to real voters today. Treated as the current/live cycle, not asserted as '2023' or '2027' specifically, since INEC's own interface does not state a cycle label.",
+  "state": { "name": "Delta", "electionCanonStateCode": "delta", "inecStateId": 10 },
+  "lgas": [
+    {
+      "name": "Okpe",
+      "electionCanonLgaMatch": "Okpe (existing acceptance-test seed)",
+      "inecLgaId": "199",
+      "inecLgaDisplayNumber": "13",
+      "wardsRaw": [
+        {
+          "0": "--SELECT--", "selected": "0",
+          "2298": "01 - OREROKPE", "2299": "02 - OVIRI - OKPE", "2300": "03 - OHA  I", "2301": "04 - OHA  II",
+          "2302": "05 - AGHALOKPE", "2303": "06 - ARAGBA  TOWN", "2304": "07 - MEREJE  I", "2305": "08 - MEREJE  II",
+          "2306": "09 - MEREJE  III", "2307": "10 - UGHOTON"
+        }
+      ]
+    },
+    {
+      "name": "Sapele",
+      "electionCanonLgaMatch": "Sapele (existing acceptance-test seed)",
+      "inecLgaId": "203",
+      "inecLgaDisplayNumber": "17",
+      "wardsRaw": [
+        {
+          "0": "--SELECT--", "selected": "0",
+          "2339": "01 - SAPELE URBAN  I", "2340": "02 - SAPELE URBAN  II", "2341": "03 - SAPELE  URBAN  III",
+          "2342": "04 - SAPELE  URBAN  IV", "2343": "05 - SAPELE  URBAN  V", "2344": "06 - SAPELE  URBAN  VI",
+          "2345": "07 - SAPELE  URBAN  VII", "2346": "08 - SAPELE  URBAN  VIII", "2347": "09 - AMUOKPE",
+          "2348": "10 - ELUME", "2349": "11 - OKOKPORO/UGBORHEN"
+        }
+      ]
+    },
+    {
+      "name": "Uvwie",
+      "electionCanonLgaMatch": "Uvwie (existing acceptance-test seed)",
+      "inecLgaId": "208",
+      "inecLgaDisplayNumber": "22",
+      "wardsRaw": [
+        {
+          "0": "--SELECT--", "selected": "0",
+          "2392": "01 - EFFURUN  I", "2393": "02 - EFFURUN  II", "2394": "03 - ENERHEN  I", "2395": "04 - ENERHEN  II",
+          "2396": "05 - UGBORIKOKO", "2397": "06 - UGBOROKE", "2398": "07 - UGBOMRO/UGBOLOKPOSO",
+          "2399": "08 - ARMY BARRACKS AREA", "2400": "09 - EKPAN  I", "2401": "10 - EKPAN  II"
+        }
+      ]
+    }
+  ],
+  "pollingUnitSample": {
+    "note": "One ward's full polling-unit list, captured to confirm PU-level shape/naming convention. NOT a complete PU census — see inec-delta-reconciliation-live.json for state-wide PU COUNTS only.",
+    "ward": "Okpe / Orerokpe",
+    "inecWardId": "2298",
+    "pollingUnitCount": 30,
+    "samplePollingUnitsRaw": {
+      "0": "--SELECT--", "selected": "0",
+      "30405": "001 - PAVILION POLICE STATION I", "30406": "002 - PAVILION POLICE STATION II",
+      "30407": "003 - PALACE GATE I", "30408": "004 - PALACE GATE II",
+      "30409": "005 - ADANE - OKPE PRIMARY SCHOOL, OREROKPE I", "30410": "006 - ADANE - OKPE PRIMARY SCHOOL, OREROKPE II",
+      "30411": "007 - ADANE - OKPE PRIMARY SCHOOL, OREROKPE III", "30412": "008 - ADANE - OKPE PRIMARY SCHOOL, OREROKPE IV"
+    }
+  }
+}

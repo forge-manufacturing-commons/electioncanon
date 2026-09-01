@@ -1,0 +1,81 @@
+{
+  "import_manifest": {
+    "note": "Exact field names this pass's own spec requested for the import manifest. Duplicated from the narrative fields below for precision — this block is the canonical machine-checkable summary; test C1-C2 in election-geography-inec-reconciliation.consumer.mjs asserts against the narrative fields, both describe the same retrieval.",
+    "source_url": "https://cvr.inecnigeria.org/pu",
+    "source_name": "INEC Continuous Voter Registration Portal — Polling Unit Locator (PublicApi)",
+    "source_date": "Not applicable — this is a live, continuously-updated system (INEC's own Continuous Voter Registration backend), not a dated static publication. No separate 'as-of' date is exposed by the source itself, distinct from the retrieval timestamp below.",
+    "election_cycle": "Current live configuration — not INEC-labelled as a specific election year (see reference_cycle below)",
+    "retrieval_timestamp": "2026-09-01T00:00:00Z",
+    "record_count": { "states": 37, "lgas_delta_only": 25, "wards_delta_only": 270, "polling_units_delta_only": 5863 },
+    "validation_status": "PASSED — see section 5 (CLASSIFICATION) of reconcile-delta.mjs's own report output; 0 duplicates, 0 orphans, 0 malformed identifiers found in the parsed real data"
+  },
+  "source_name": "INEC Continuous Voter Registration Portal — Polling Unit Locator (PublicApi)",
+  "source_url": "https://cvr.inecnigeria.org/pu",
+  "retrieval_method": "Live, unauthenticated fetch() crawl of all 25 Delta LGAs -> all wards -> all polling-unit COUNTS (row counts only, not full PU name/code lists, for the 22 LGAs outside the existing Okpe/Sapele/Uvwie acceptance-test slice) via cvr.inecnigeria.org/PublicApi/. Full name-level detail for Okpe/Sapele/Uvwie is in inec-delta-okpe-sapele-uvwie-wards-live.json.",
+  "retrieved_at": "2026-09-01T00:00:00Z",
+  "reference_cycle": "Current live INEC Continuous Voter Registration configuration as of retrieval — see the ward-level fixture's own note on why this is not asserted as a specific '2023'/'2027' label.",
+  "national_totals_stated_by_inec": {
+    "source_url": "https://inecnigeria.org/polling-units/",
+    "note": "INEC's own static overview page, fetched the same day, states these totals directly — used here as the reconciliation baseline.",
+    "totalPollingUnits": 176846,
+    "totalRegistrationAreasWards": 8809,
+    "totalLgas": 774,
+    "totalStatesIncludingFct": 37
+  },
+  "delta_state": {
+    "inecStateId": 10,
+    "electionCanonStateCode": "delta",
+    "lgaCount": 25,
+    "expectedLgaCount": 25,
+    "lgaCountMatchesExpected": true,
+    "totalWards": 270,
+    "totalPollingUnits": 5863,
+    "unresolvedWardsDuringCrawl": 0,
+    "shareOfNationalWards": "270 / 8809 = 3.07%",
+    "shareOfNationalPollingUnits": "5863 / 176846 = 3.32%",
+    "shareOfNationalConsistencyNote": "Both proportions fall in a plausible, mutually consistent range for a single mid-large state — not proof of correctness on their own, but no internal contradiction found.",
+    "perLga": [
+      { "displayNumber": "01", "name": "ANIOCHA NORTH", "wardCount": 10 },
+      { "displayNumber": "02", "name": "ANIOCHA - SOUTH", "wardCount": 11 },
+      { "displayNumber": "03", "name": "BOMADI", "wardCount": 10 },
+      { "displayNumber": "04", "name": "BURUTU", "wardCount": 11 },
+      { "displayNumber": "05", "name": "ETHIOPE  EAST", "wardCount": 11 },
+      { "displayNumber": "06", "name": "ETHIOPE  WEST", "wardCount": 11 },
+      { "displayNumber": "07", "name": "IKA NORTH- EAST", "wardCount": 14 },
+      { "displayNumber": "08", "name": "IKA - SOUTH", "wardCount": 12 },
+      { "displayNumber": "09", "name": "ISOKO NORTH", "wardCount": 13 },
+      { "displayNumber": "10", "name": "ISOKO SOUTH", "wardCount": 11 },
+      { "displayNumber": "11", "name": "NDOKWA EAST", "wardCount": 10 },
+      { "displayNumber": "12", "name": "NDOKWA WEST", "wardCount": 10 },
+      { "displayNumber": "13", "name": "OKPE", "wardCount": 10 },
+      { "displayNumber": "14", "name": "OSHIMILI - NORTH", "wardCount": 10 },
+      { "displayNumber": "15", "name": "OSHIMILI - SOUTH", "wardCount": 11 },
+      { "displayNumber": "16", "name": "PATANI", "wardCount": 10 },
+      { "displayNumber": "17", "name": "SAPELE", "wardCount": 11 },
+      { "displayNumber": "18", "name": "UDU", "wardCount": 10 },
+      { "displayNumber": "19", "name": "UGHELLI NORTH", "wardCount": 11 },
+      { "displayNumber": "20", "name": "UGHELLI SOUTH", "wardCount": 11 },
+      { "displayNumber": "21", "name": "UKWUANI", "wardCount": 10 },
+      { "displayNumber": "22", "name": "UVWIE", "wardCount": 10 },
+      { "displayNumber": "23", "name": "WARRI  NORTH", "wardCount": 10 },
+      { "displayNumber": "24", "name": "WARRI SOUTH", "wardCount": 12 },
+      { "displayNumber": "25", "name": "WARRI SOUTH  WEST", "wardCount": 10 }
+    ]
+  },
+  "electioncanon_existing_seed": {
+    "note": "What ElectionCanon's own database holds for Delta TODAY, before any import — the acceptance-test slice from 20260829000000_election_geography.sql, deliberately left untouched by this pass.",
+    "lgas": ["Okpe", "Sapele", "Uvwie"],
+    "lgaCount": 3,
+    "wardCount": 0,
+    "pollingUnitCount": 0
+  },
+  "gap_this_pilot_confirms": {
+    "wardsKnownToInecButNotYetImported": {
+      "Okpe": 10, "Sapele": 11, "Uvwie": 10, "totalForExistingSlice": 31
+    },
+    "pollingUnitsKnownToInecButNotYetImported": {
+      "note": "Full PU count for Okpe/Sapele/Uvwie specifically was not separately isolated in this crawl (the 5,863 total is Delta-wide across all 25 LGAs); Okpe's Orerokpe ward alone has 30 PUs (see the ward-level fixture's pollingUnitSample) — a lower bound, not the LGA total.",
+      "deltaStateWideTotal": 5863
+    }
+  }
+}
