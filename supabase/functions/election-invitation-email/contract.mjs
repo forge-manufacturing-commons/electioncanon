@@ -1,5 +1,6 @@
 // ============================================================
-// ELECTIONCANON INVITATION EMAIL — WIRE CONTRACT  (First-user completion pass, item 4)
+// ELECTIONCANON INVITATION EMAIL — WIRE CONTRACT  (First-user completion pass, item 4;
+// redesigned in the human-first invitation-email pass)
 //
 // Modelled directly on supabase/functions/election-voice/contract.mjs's
 // own split: plain JavaScript, no Deno APIs, so Deno runs it in
@@ -26,6 +27,18 @@
 // is exact", "queued means queued, not delivered" — are proven in the
 // same Node test suite as everything else, not asserted only in a
 // Deno function nobody can run here.
+//
+// REDESIGN, 2026-09-02: the previous version opened with a motivational
+// quote before a first-time recipient learned anything about who invited
+// them or why, buried role/territory inside one long sentence, and
+// rendered the full invitation link (including the raw token) as plain
+// visible text below the button. This version leads with the invitation
+// itself; states responsibility/area as two separate, labelled facts; adds
+// an explicit numbered "what happens next" that matches AcceptInvite.jsx's
+// real flow (see that file plus Election.jsx's own pending-invite-token
+// redirect); and never prints the token as visible text anywhere in the
+// HTML body (see buildInvitationEmail()'s own note on the plain-text
+// alternative, which is the one place a raw link is unavoidable).
 // ============================================================
 
 export const RESPONSIBILITY_ROLE_LABEL = Object.freeze({
@@ -61,59 +74,135 @@ export function validateSendRequest(body) {
   return { valid: true, invitationId: id.trim() };
 }
 
+// geography_states.name is stored as its plain canonical name ("Lagos",
+// "Delta", "Federal Capital Territory" — see the geography migration's own
+// seed). "State" is a DISPLAY convention, not stored data, and does not
+// apply to the one non-state entry (FCT already reads correctly on its
+// own) — this check is against that literal, general seeded value, never
+// against any particular state's name, so no state (Lagos or otherwise)
+// is special-cased here.
+function displayStateName(stateName) {
+  if (!stateName) return null;
+  return stateName === "Federal Capital Territory" ? stateName : `${stateName} State`;
+}
+
+/**
+ * Composes the "Your area" line for whichever level this invitation is
+ * actually at, from the REAL canonical names get_invitation_preview()
+ * resolved (see that function's own migration) — never a guess, never
+ * re-derived from anything but what was actually returned. Returns null
+ * (never a fabricated placeholder) when there is no geography at all — a
+ * Director-level invitation carries none, and the "Your area" fact block
+ * is omitted entirely for it rather than shown empty.
+ */
+export function formatInvitationArea({ level, geographyName, geographyStateName, geographyLgaName, geographyWardName }) {
+  if (!geographyName) return null;
+  const stateDisplay = displayStateName(geographyStateName);
+  const parts = [geographyName];
+  if (level === "ward") {
+    if (geographyLgaName) parts.push(geographyLgaName);
+  } else if (level === "polling_unit") {
+    if (geographyWardName) parts.push(geographyWardName);
+    if (geographyLgaName) parts.push(geographyLgaName);
+  }
+  if (stateDisplay) parts.push(stateDisplay);
+  return parts.join(", ");
+}
+
 /**
  * @param invitation    the REAL row read from campaign_invitations (via the
- *                       caller's own RLS-scoped session — see index.ts),
- *                       plus the campaign's own name and the resolved
- *                       geography name (already how OrganisationSection.jsx/
- *                       AcceptInvite.jsx resolve it — no new lookup logic).
+ *                       caller's own RLS-scoped session — see index.ts).
+ * @param campaignName   the campaign's own real, stored name (still
+ *                       "[ElectionType] Name" — split by parseCampaignTitle
+ *                       below, never rendered raw).
+ * @param geographyName, geographyStateName, geographyLgaName,
+ *   geographyWardName   the real canonical names get_invitation_preview()
+ *                       resolved for this invitation's level (see that
+ *                       function's own migration) — composed into one
+ *                       "Your area" line by formatInvitationArea() above.
  * @param invitedByName  the inviter's OWN display name/email, resolved by
  *                       index.ts from the CALLER's own forwarded session
  *                       (never a lookup of some other user's profile — the
  *                       caller invoking this function *is* invited_by, by
  *                       construction of create_campaign_invitation()). null
  *                       when it genuinely could not be resolved — rendered
- *                       as "the campaign team", never fabricated.
+ *                       as "your campaign team", never fabricated.
  * @param origin         the site origin (e.g. https://electioncanon.org),
  *                       used to build the exact same /invite/:token link the
  *                       "copy invitation link" fallback in the UI produces.
  */
-export function buildInvitationEmail({ invitation, campaignName, geographyName, invitedByName, origin }) {
+export function buildInvitationEmail({
+  invitation, campaignName, geographyName, geographyStateName, geographyLgaName, geographyWardName, invitedByName, origin,
+}) {
   // campaigns.name is stored as "[ElectionType] Name" (unchanged, no
   // migration — see parseCampaignTitle()'s own header above). The email
   // must never render that raw bracket-prefixed string; the clean name and
   // the election type are shown separately, exactly like the app's own
   // display layer already does.
   const { name: cleanCampaignName, electionType } = parseCampaignTitle(campaignName);
+  const displayCampaignName = cleanCampaignName || "an ElectionCanon campaign";
   const roleLabel = invitation.intended_responsibility_role
     ? RESPONSIBILITY_ROLE_LABEL[invitation.intended_responsibility_role] ?? invitation.intended_responsibility_role
     : "Campaign Director";
-  const territoryLine = geographyName ? ` — ${geographyName}` : "";
+  const areaDisplay = formatInvitationArea({
+    level: invitation.intended_level, geographyName, geographyStateName, geographyLgaName, geographyWardName,
+  });
   const link = `${origin}/invite/${invitation.token}`;
-  const inviterLabel = invitedByName?.trim() || "the campaign team";
+  const inviterLabel = invitedByName?.trim() || "your campaign team";
   const expiresText = invitation.expires_at
     ? new Date(invitation.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
     : null;
 
-  const subject = "You're invited to join an ElectionCanon campaign";
+  // Subject names both facts a recipient needs before even opening the
+  // email — inviter and campaign — with the SAME honest fallback
+  // ("your campaign team") the body uses when the inviter can't be
+  // resolved, never "undefined"/"null". The token never appears here.
+  const subject = `${inviterLabel} invited you to ${displayCampaignName} on ElectionCanon`;
 
   // Table-based HTML, inline CSS, no external fonts, no JavaScript — same
   // constraints and the same visual language (black/ivory/teal/amber/pink)
   // as supabase/email-templates/confirm-signup.html, reused rather than a
   // second visual identity. escapeHtml() guards every field that came from
-  // a human typing into a form (invited_name, campaignName, geographyName,
-  // invitedByName) — the token/link are server-generated, never user-typed.
+  // a human typing into a form (invited_name, campaignName, geography
+  // names, invitedByName) — the token/link are server-generated, never
+  // user-typed.
   //
-  // THE QUOTE BLOCK IS DELIBERATELY REUSED, NOT DUPLICATED AS A SEPARATE
-  // IDENTITY. confirm-signup.html's own opening element (Archbishop Benson
-  // Idahosa's "If you fail to prepare, you are preparing to fail.") is the
-  // brand's one preparation motif — reused here so both emails read as the
-  // same product. The two are kept from being confused with each other the
-  // same way confirm-signup.html already distinguishes itself from any other
-  // email: a distinct <title>/H1 ("You've been invited to join X", never
-  // "Confirm your ElectionCanon account") and body copy that is about a
-  // CAMPAIGN INVITATION throughout, never account confirmation.
+  // CONTENT ORDER, DELIBERATE: brand mark -> the invitation itself (who /
+  // what) -> one plain-language sentence -> two labelled fact blocks
+  // (responsibility, area) -> the one CTA -> numbered "what happens next"
+  // (matching AcceptInvite.jsx's real flow, not an idealised one) ->
+  // expiry/trust line -> footer, where the Archbishop Benson Idahosa quote
+  // now lives as a small, secondary brand motif — present, never first.
+  //
+  // THE RAW TOKEN NEVER APPEARS AS VISIBLE HTML TEXT. It exists only
+  // inside the two <a href="..."> targets below (the primary button and
+  // the small "Open invitation" fallback link, whose own VISIBLE text is
+  // never the URL) — never printed as a readable string a recipient could
+  // screenshot or accidentally repaste out of context. (The plain-text
+  // alternative body below is the one unavoidable exception: a client that
+  // renders text/plain has no concept of a hidden link target at all, so
+  // the literal URL is the only way that alternative can be clicked or
+  // copied — see interpretResendResponse()'s own file header on why a
+  // text alternative exists in the first place.)
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const factBlock = (label, value, accent) => `
+            <tr><td style="padding: 0 0 16px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                <td width="3" style="background-color:${accent}; font-size:0; line-height:0;">&nbsp;</td>
+                <td style="padding-left: 14px;">
+                  <p style="margin:0 0 3px 0; font-family: Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #8899AA; text-transform: uppercase;">${esc(label)}</p>
+                  <p style="margin:0; font-family: Helvetica, Arial, sans-serif; font-size: 17px; font-weight: 800; color: #F5F1E9;">${esc(value)}</p>
+                </td>
+              </tr></table>
+            </td></tr>`;
+  const stepRow = (n, copy) => `
+            <tr><td style="padding: 0 0 10px 0;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+                <td width="22" valign="top" style="font-family: Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 800; color: #0AB4A0;">${n}.</td>
+                <td style="font-family: Helvetica, Arial, sans-serif; font-size: 13.5px; line-height: 20px; color: #C9CDD3;">${esc(copy)}</td>
+              </tr></table>
+            </td></tr>`;
+
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -125,7 +214,7 @@ export function buildInvitationEmail({ invitation, campaignName, geographyName, 
 </head>
 <body style="margin:0; padding:0; background-color:#0D0D0F;">
   <div style="display:none; max-height:0; overflow:hidden; opacity:0;">
-    ${esc(inviterLabel)} has invited you to join ${esc(cleanCampaignName)} on ElectionCanon as ${esc(roleLabel)}${esc(territoryLine)}.
+    ${esc(inviterLabel)} invited you to join ${esc(displayCampaignName)} on ElectionCanon as ${esc(roleLabel)}${areaDisplay ? ` — ${esc(areaDisplay)}` : ""}.
   </div>
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#0D0D0F" style="background-color:#0D0D0F;">
     <tr><td align="center" style="padding: 32px 16px;">
@@ -134,44 +223,30 @@ export function buildInvitationEmail({ invitation, campaignName, geographyName, 
           <span style="font-family: Helvetica, Arial, sans-serif; font-size: 13px; font-weight: 800; letter-spacing: 2px; color: #0A7F73; text-transform: uppercase;">ElectionCanon</span>
         </td></tr>
         <tr><td style="background-color:#111418; border:1px solid #1C2128;">
+
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr><td style="padding: 36px 40px 28px 40px; border-bottom: 1px solid #1C2128;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
-                <td width="3" style="background-color:#FF2E63; font-size:0; line-height:0;">&nbsp;</td>
-                <td style="padding-left: 18px;">
-                  <p style="margin:0; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 19px; line-height: 28px; color: #F5F1E9;">
-                    &ldquo;If you fail to prepare,<br>you are preparing to fail.&rdquo;
-                  </p>
-                  <p style="margin: 12px 0 0 0; font-family: Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #8899AA; text-transform: uppercase;">
-                    &mdash; Archbishop Benson Idahosa
-                  </p>
-                </td>
-              </tr></table>
-            </td></tr>
-          </table>
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr><td style="padding: 32px 40px 8px 40px;">
-              <h1 style="margin:0 0 6px 0; font-family: Helvetica, Arial, sans-serif; font-weight: 800; font-size: 26px; line-height: 32px; color: #F5F1E9;">
-                You've been invited to join ${esc(cleanCampaignName)}
+            <tr><td style="padding: 36px 40px 8px 40px;">
+              <h1 style="margin:0 0 12px 0; font-family: Helvetica, Arial, sans-serif; font-weight: 800; font-size: 25px; line-height: 31px; color: #F5F1E9;">
+                ${esc(inviterLabel)} invited you to join ${esc(displayCampaignName)}
               </h1>
-              ${electionType ? `<p style="margin:0 0 18px 0; font-family: Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #8899AA; text-transform: uppercase;">Election: ${esc(electionType)}</p>` : `<div style="margin-bottom:18px;"></div>`}
-              <p style="margin: 0 0 10px 0; font-family: Helvetica, Arial, sans-serif; font-size: 15px; line-height: 24px; color: #C9CDD3;">
-                Hi ${esc(invitation.invited_name)},
-              </p>
-              <p style="margin: 0 0 16px 0; font-family: Helvetica, Arial, sans-serif; font-size: 15px; line-height: 24px; color: #C9CDD3;">
-                <strong style="color:#F5F1E9;">${esc(inviterLabel)}</strong> has invited you to join
-                <strong style="color:#F5F1E9;">${esc(cleanCampaignName)}</strong> on ElectionCanon as
-                <strong style="color:#0AB4A0;">${esc(roleLabel)}${esc(territoryLine)}</strong>. Accepting gives you your own
-                sign-in, scoped to exactly this responsibility and territory — not a generic account.
-              </p>
-              <p style="margin: 0 0 16px 0; font-family: Helvetica, Arial, sans-serif; font-size: 15px; line-height: 24px; color: #C9CDD3;">
-                Accepting will take you through ElectionCanon's own sign-in and registration — you'll confirm or create your
-                account there before this invitation is applied to it.
+              ${electionType ? `<p style="margin:0 0 14px 0; font-family: Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; color: #8899AA; text-transform: uppercase;">Election: ${esc(electionType)}</p>` : ""}
+              <p style="margin: 0 0 22px 0; font-family: Helvetica, Arial, sans-serif; font-size: 14.5px; line-height: 22px; color: #C9CDD3;">
+                You've been invited to help coordinate this campaign on ElectionCanon.
               </p>
             </td></tr>
           </table>
+
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr><td align="left" style="padding: 8px 40px 28px 40px;">
+            <tr><td style="padding: 0 40px 8px 40px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                ${factBlock("Your responsibility", roleLabel, "#0AB4A0")}
+                ${areaDisplay ? factBlock("Your area", areaDisplay, "#F5A623") : ""}
+              </table>
+            </td></tr>
+          </table>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td align="left" style="padding: 8px 40px 10px 40px;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
                 <td align="center" bgcolor="#F5A623" style="background-color:#F5A623;">
                   <a href="${esc(link)}" target="_blank" style="display:inline-block; padding: 16px 40px; font-family: Helvetica, Arial, sans-serif; font-size: 14px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: #0D0D0F; text-decoration: none; white-space: nowrap;">
@@ -180,31 +255,54 @@ export function buildInvitationEmail({ invitation, campaignName, geographyName, 
                 </td>
               </tr></table>
             </td></tr>
+            <tr><td style="padding: 0 40px 28px 40px;">
+              <p style="margin:0; font-family: Helvetica, Arial, sans-serif; font-size: 12px; color: #5C6672;">
+                Button not working? <a href="${esc(link)}" style="color:#0A7F73;">Open invitation</a>
+              </p>
+            </td></tr>
           </table>
+
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td style="padding: 0 40px 28px 40px; border-top: 1px solid #1C2128; padding-top: 24px;">
+              <p style="margin:0 0 12px 0; font-family: Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #8899AA; text-transform: uppercase;">What happens next</p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                ${stepRow(1, "Click Accept Invitation.")}
+                ${stepRow(2, "Sign in, or create your ElectionCanon account.")}
+                ${stepRow(3, "Review your role and area.")}
+                ${stepRow(4, "Accept the invitation and join the campaign.")}
+              </table>
+            </td></tr>
+          </table>
+
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
             <tr><td style="padding: 0 40px 28px 40px;">
-              <p style="margin: 0 0 8px 0; font-family: Helvetica, Arial, sans-serif; font-size: 13px; line-height: 20px; color: #5C6672; word-break: break-all;">
-                Or paste this link into your browser: <a href="${esc(link)}" style="color:#0A7F73;">${esc(link)}</a>
+              <p style="margin: 0 0 8px 0; font-family: Helvetica, Arial, sans-serif; font-size: 12px; line-height: 18px; color: #5C6672;">
+                This invitation is for ${esc(invitation.invited_email)}${expiresText ? ` and expires ${esc(expiresText)}` : ""}.
               </p>
-              ${expiresText ? `<p style="margin: 0 0 8px 0; font-family: Helvetica, Arial, sans-serif; font-size: 12px; color: #5C6672;">This invitation expires ${esc(expiresText)}.</p>` : ""}
               <p style="margin: 0; font-family: Helvetica, Arial, sans-serif; font-size: 12px; line-height: 18px; color: #5C6672;">
-                This invitation is intended for ${esc(invitation.invited_email)}. If you sign in with a different email
-                address, ElectionCanon will not let you accept it.
+                If you weren't expecting this invitation, you can safely ignore this email.
               </p>
             </td></tr>
           </table>
+
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
             <tr><td style="padding: 20px 40px 32px 40px; border-top: 1px solid #1C2128;">
-              <p style="margin:0; font-family: Helvetica, Arial, sans-serif; font-size: 11px; font-weight: 800; letter-spacing: 1.5px; color: #0A7F73; text-transform: uppercase;">
-                Prepare&nbsp;&nbsp;&middot;&nbsp;&nbsp;Organize&nbsp;&nbsp;&middot;&nbsp;&nbsp;Coordinate&nbsp;&nbsp;&middot;&nbsp;&nbsp;Observe&nbsp;&nbsp;&middot;&nbsp;&nbsp;Respond
-              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
+                <td width="3" style="background-color:#FF2E63; font-size:0; line-height:0;">&nbsp;</td>
+                <td style="padding-left: 14px;">
+                  <p style="margin:0; font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-size: 13px; line-height: 19px; color: #8899AA;">
+                    &ldquo;If you fail to prepare, you are preparing to fail.&rdquo; &mdash; Archbishop Benson Idahosa
+                  </p>
+                </td>
+              </tr></table>
             </td></tr>
           </table>
+
         </td></tr>
         <tr><td style="padding: 24px 8px 0 8px;">
           <p style="margin: 0 0 6px 0; font-family: Helvetica, Arial, sans-serif; font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #8899AA; text-transform: uppercase;">ElectionCanon</p>
           <p style="margin: 0 0 14px 0; font-family: Helvetica, Arial, sans-serif; font-size: 12px; line-height: 18px; color: #5C6672;">
-            An open-source operating system for running an election campaign.
+            An open-source election operating system.
           </p>
           <p style="margin: 0; font-family: Helvetica, Arial, sans-serif; font-size: 11px; line-height: 17px; color: #3a4a5a;">
             You are receiving this because ${esc(invitation.invited_email)} was invited to a campaign on electioncanon.org.
@@ -217,15 +315,21 @@ export function buildInvitationEmail({ invitation, campaignName, geographyName, 
 </body>
 </html>`;
 
-  const text = `"If you fail to prepare, you are preparing to fail." — Archbishop Benson Idahosa\n\n`
-    + `${inviterLabel} has invited you to join ${cleanCampaignName} on ElectionCanon as ${roleLabel}${territoryLine}.\n`
+  const text = `${inviterLabel} invited you to join ${displayCampaignName} on ElectionCanon.\n`
+    + `You've been invited to help coordinate this campaign on ElectionCanon.\n`
     + (electionType ? `Election: ${electionType}\n\n` : `\n`)
-    + `Accepting will take you through ElectionCanon's own sign-in and registration — you'll confirm or create your account there before this invitation is applied to it.\n\n`
-    + `Accept your invitation: ${link}\n\n`
-    + (expiresText ? `This invitation expires ${expiresText}.\n\n` : "")
-    + `This invitation is intended for ${invitation.invited_email}. If you sign in with a different email address, `
-    + `ElectionCanon will not let you accept it.\n\n`
-    + `ElectionCanon — an open-source operating system for running an election campaign.`;
+    + `Your responsibility: ${roleLabel}\n`
+    + (areaDisplay ? `Your area: ${areaDisplay}\n` : ``)
+    + `\nAccept your invitation: ${link}\n\n`
+    + `What happens next:\n`
+    + `1. Click the link above.\n`
+    + `2. Sign in, or create your ElectionCanon account.\n`
+    + `3. Review your role and area.\n`
+    + `4. Accept the invitation and join the campaign.\n\n`
+    + `This invitation is for ${invitation.invited_email}` + (expiresText ? ` and expires ${expiresText}` : "") + `.\n`
+    + `If you weren't expecting this invitation, you can safely ignore this email.\n\n`
+    + `"If you fail to prepare, you are preparing to fail." — Archbishop Benson Idahosa\n\n`
+    + `ElectionCanon — an open-source election operating system.`;
 
   return { subject, html, text };
 }
@@ -244,4 +348,7 @@ export function interpretResendResponse(status, body) {
   return { ok: false, providerMessageId: null, error: message };
 }
 
-export default { RESPONSIBILITY_ROLE_LABEL, validateSendRequest, parseCampaignTitle, buildInvitationEmail, buildResendRequest, interpretResendResponse };
+export default {
+  RESPONSIBILITY_ROLE_LABEL, validateSendRequest, parseCampaignTitle, formatInvitationArea,
+  buildInvitationEmail, buildResendRequest, interpretResendResponse,
+};

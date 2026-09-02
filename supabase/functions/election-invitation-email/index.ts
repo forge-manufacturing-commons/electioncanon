@@ -112,6 +112,9 @@ Deno.serve(async (req: Request) => {
     invitation,
     campaignName: preview?.campaign_name ?? "an ElectionCanon campaign",
     geographyName: preview?.geography_name ?? null,
+    geographyStateName: preview?.geography_state_name ?? null,
+    geographyLgaName: preview?.geography_lga_name ?? null,
+    geographyWardName: preview?.geography_ward_name ?? null,
     invitedByName,
     origin,
   });
