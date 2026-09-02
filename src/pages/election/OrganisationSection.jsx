@@ -12,7 +12,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase.js";
-import { getConstituencyTerritory } from "../../domains/election/geography/read.js";
+import { getConstituencyTerritory, getStateTerritory, listOffices } from "../../domains/election/geography/read.js";
 import { listWardsForLga } from "../../domains/election/geography/read.js";
 import { createInvitation, revokeInvitation } from "../../domains/election/invitations/write.js";
 import { listInvitations } from "../../domains/election/invitations/read.js";
@@ -30,7 +30,7 @@ function myOwnResponsibility(view, campaignId, userId) {
   return mine ?? null;
 }
 
-function InviteWizard({ campaignId, refresh, territory, myRole, myResponsibility, onDone }) {
+function InviteWizard({ campaignId, refresh, territory, offices, myRole, myResponsibility, onDone }) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -46,15 +46,33 @@ function InviteWizard({ campaignId, refresh, territory, myRole, myResponsibility
   const [emailError, setEmailError] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  // FIX (production verification pass) — a state-level office (Governor,
+  // President) carries a real `territory.state` but NO `territory.
+  // constituency` at all (proposeSetTerritory() never asks for one — see
+  // geography/write.js's own header), the exact same shape
+  // TerritoryExplorer.jsx already resolves via getStateTerritory(). This
+  // wizard previously only ever called getConstituencyTerritory() and only
+  // when `territory.constituency` was set, so for every state-level
+  // campaign (e.g. a Lagos Governor campaign) `tree` stayed null forever
+  // and the LGA dropdown rendered with zero real options — never a second
+  // geography source, never a hardcoded list, just the same canonical
+  // geography_lgas/geography_wards read TerritoryExplorer already uses,
+  // reached the same way it reaches it.
+  const office = offices?.find((o) => o.id === territory?.office) ?? null;
+  const isStateLevel = office?.boundary_level === "state" || office?.boundary_level === "national";
+  const hasResolvableTerritory = Boolean(territory?.constituency) || isStateLevel;
+
   useEffect(() => {
     let cancelled = false;
-    if (!territory?.constituency) return undefined;
+    if (!hasResolvableTerritory) { setTree(null); return undefined; }
     (async () => {
-      const { data } = await getConstituencyTerritory({ client: supabase, constituencyId: territory.constituency });
+      const { data } = territory.constituency
+        ? await getConstituencyTerritory({ client: supabase, constituencyId: territory.constituency })
+        : await getStateTerritory({ client: supabase, stateCode: territory.state });
       if (!cancelled) setTree(data);
     })();
     return () => { cancelled = true; };
-  }, [territory?.constituency]);
+  }, [territory?.constituency, territory?.state, hasResolvableTerritory]);
 
   // The roles a Director/owner may offer are all four; an LGA Coordinator
   // may only offer Ward Coordinator (within their own LGA); a Ward
@@ -268,6 +286,13 @@ export default function OrganisationSection({ ctx, campaignId, refresh }) {
   const [invitations, setInvitations] = useState([]);
   const [userId, setUserId] = useState(null);
   const [members, setMembers] = useState([]);
+  // FIX (production verification pass) — fetched once here, the same way
+  // TerritorySection.jsx fetches it for TerritoryExplorer, and passed down
+  // to InviteWizard so it can tell a state-level office (Governor,
+  // President — no constituency) apart from a constituency-bound one. See
+  // InviteWizard's own comment on why this was missing.
+  const [offices, setOffices] = useState([]);
+  const [officesLoaded, setOfficesLoaded] = useState(false);
   // PRE-LAUNCH UX CLEANUP PASS — the signed-in viewer's OWN identity, for
   // nameFor() below. Never a raw id: falls back through profile display
   // name, then the account's own email, matching profileResolver.js's own
@@ -286,6 +311,11 @@ export default function OrganisationSection({ ctx, campaignId, refresh }) {
     }
     const { data: invData } = await listInvitations({ client: supabase, campaignId });
     setInvitations(invData ?? []);
+    if (!officesLoaded) {
+      const { data: officesData } = await listOffices({ client: supabase });
+      setOffices(officesData ?? []);
+      setOfficesLoaded(true);
+    }
     const { data: memberData } = await supabase.from("campaign_members").select("person, member_role, status").eq("campaign_id", campaignId).eq("status", "active");
     setMembers(memberData ?? []);
   };
@@ -377,7 +407,11 @@ export default function OrganisationSection({ ctx, campaignId, refresh }) {
         <div style={{ marginTop: 18 }}>
           <Panel accent={PINK}><div style={{ fontFamily: UI, fontSize: 13, color: IVORY }}>Set your territory in the Territory tab before inviting people.</div></Panel>
         </div>
-      ) : !canInvite ? null : (
+      ) : !canInvite ? null : !officesLoaded ? (
+        <div style={{ marginTop: 18 }}>
+          <Panel><div style={{ fontFamily: UI, fontSize: 13, color: MUTED }}>Loading territory…</div></Panel>
+        </div>
+      ) : (
         <div style={{ marginTop: 18 }}>
           {!inviting ? (
             <button onClick={() => setInviting(true)}
@@ -385,7 +419,7 @@ export default function OrganisationSection({ ctx, campaignId, refresh }) {
               + Invite Person
             </button>
           ) : (
-            <InviteWizard campaignId={campaignId} refresh={loadAll} territory={territory} myRole={myRole} myResponsibility={myResponsibility}
+            <InviteWizard campaignId={campaignId} refresh={loadAll} territory={territory} offices={offices} myRole={myRole} myResponsibility={myResponsibility}
               onDone={() => setInviting(false)} />
           )}
         </div>
